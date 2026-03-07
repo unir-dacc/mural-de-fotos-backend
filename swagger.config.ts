@@ -19,7 +19,9 @@ const configSwagger = new DocumentBuilder()
 function setupSwagger(app: INestApplication) {
   const document = SwaggerModule.createDocument(app, configSwagger);
   const path = process.env.ROUTE || '';
-  SwaggerModule.setup(`${path}/docs`, app, cleanupOpenApiDoc(document), {
+  const cleaned = cleanupOpenApiDoc(document);
+
+  SwaggerModule.setup(`${path}/docs`, app, cleaned, {
     jsonDocumentUrl: `${path}/swagger/json`,
     customSiteTitle: 'API',
   });

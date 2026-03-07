@@ -3,9 +3,9 @@ import { z } from 'zod';
 
 export const GetUserSchema = z.object({
   id: z.uuid().describe('Unique identifier for the user'),
-  email: z.email().nullable().describe('Email address of the user'),
+  email: z.email().describe('Email address of the user'),
   name: z.string().describe('Name of the user'),
-  cpf: z.string().nullable().describe('CPF of the user'),
+  cpf: z.string().describe('CPF of the user'),
 
   createdAt: z.string().describe('Date when the user was created'),
   updatedAt: z.string().describe('Date when the user was last updated'),

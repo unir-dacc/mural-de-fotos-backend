@@ -4,7 +4,7 @@ import { MediaSchema } from './media.dto';
 
 export const GetPostSchema = z.object({
   id: z.uuid().describe('Identificador único do post'),
-  caption: z.string().nullable().describe('Legenda do post'),
+  caption: z.string().describe('Legenda do post'),
   imageUrl: z.url().describe('URL da imagem do post'),
   public: z.boolean().describe('Define se o post é público'),
   createdAt: z.string().describe('Data de criação do post'),
