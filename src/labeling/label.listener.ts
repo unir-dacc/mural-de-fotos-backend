@@ -77,6 +77,11 @@ export class PostCreatedListener {
         this.logger.debug(
           `Nenhuma pessoa detectada na mídia ${media.id} (${media.imageUrl})`,
         );
+
+        await this.prisma.media.update({
+          where: { id: media.id },
+          data: { isProcessed: true },
+        });
       }
 
       for (const person of persons) {
