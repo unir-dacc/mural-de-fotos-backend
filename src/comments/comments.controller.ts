@@ -12,7 +12,7 @@ import { CommentsService } from './comments.service';
 @Controller('posts')
 @ApiBearerAuth('JWT-auth')
 export class CommentsController {
-  constructor(private readonly commentsService: CommentsService) { }
+  constructor(private readonly commentsService: CommentsService) {}
 
   @Post(':id/comments')
   @ApiOperation({ summary: 'Cria um comentário em um post' })
@@ -51,6 +51,7 @@ export class CommentsController {
             properties: {
               id: { type: 'string' },
               name: { type: 'string' },
+              avatarUrl: { type: 'string' },
             },
           },
         },
