@@ -252,29 +252,16 @@ export class PostsService {
 
     const whereAnd: Prisma.PostWhereInput[] = [];
 
-    // Só públicos se não estiver logado
     if (!isLogged) {
       whereAnd.push({ public: true });
     }
 
-    // Filtro por userId (já existia)
     if (userId) {
       whereAnd.push({
-        Media: {
-          some: {
-            entities: {
-              some: {
-                EntityCluster: {
-                  userId,
-                },
-              },
-            },
-          },
-        },
+        userId,
       });
     }
 
-    // 🔍 Filtro de busca
     if (search) {
       whereAnd.push(buildSearchWhere(search));
     }
