@@ -7,17 +7,10 @@ import { EmailListener } from 'src/notification/email.listener';
 import { EmailService } from 'src/notification/email.service';
 import { AwsUploadModule } from 'src/aws/aws.module';
 import { ConfigModule } from '@nestjs/config';
-import { PostsStartup } from 'src/posts/posts-startup.service';
 
 @Module({
   imports: [EventEmitterModule.forRoot(), AwsUploadModule, ConfigModule],
   controllers: [PostsController],
-  providers: [
-    PostsService,
-    PrismaService,
-    EmailListener,
-    EmailService,
-    PostsStartup,
-  ],
+  providers: [PostsService, PrismaService, EmailListener, EmailService],
 })
 export class PostsModule {}
