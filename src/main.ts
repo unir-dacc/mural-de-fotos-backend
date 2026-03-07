@@ -1,6 +1,5 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { patchNestJsSwagger } from 'nestjs-zod';
 import setupSwagger from 'swagger.config';
 import { PrismaExceptionFilters } from './common/filters/prisma-exception.filter';
 import { existsSync, mkdirSync } from 'fs';
@@ -19,7 +18,6 @@ async function bootstrap() {
   app.enableCors();
   app.useGlobalFilters(new PrismaExceptionFilters());
 
-  patchNestJsSwagger();
   setupSwagger(app);
   await app.listen(4000);
 }
