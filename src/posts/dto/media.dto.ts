@@ -8,6 +8,11 @@ export const MediaSchema = z.object({
   isVideo: z.boolean().describe('Indica se o media é um vídeo'),
   createdAt: z.string().describe('Data de criação do media'),
   updatedAt: z.string().describe('Data da última atualização do media'),
+  thumbnailUrl: z
+    .url()
+    .optional()
+    .nullable()
+    .describe('URL da imagem/vídeo do media'),
   tags: z.any().describe('Tags em JSON do media'),
 });
 

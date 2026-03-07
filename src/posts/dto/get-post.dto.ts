@@ -7,7 +7,6 @@ import { GetUserSchema } from 'src/users/dto/get-user.dto';
 export const GetPostSchema = z.object({
   id: z.uuid().describe('Identificador único do post'),
   caption: z.string().describe('Legenda do post'),
-  imageUrl: z.url().describe('URL da imagem do post'),
   public: z.boolean().describe('Define se o post é público'),
   createdAt: z.string().describe('Data de criação do post'),
   updatedAt: z.string().describe('Data da última atualização do post'),
@@ -17,6 +16,11 @@ export const GetPostSchema = z.object({
     .array(MediaSchema)
     .default([])
     .describe('Lista de mídias (imagens/vídeos) do post'),
+  thumbnailUrl: z
+    .url()
+    .optional()
+    .nullable()
+    .describe('URL da imagem/vídeo do media'),
   _count: z.object({
     likes: z.number(),
     comments: z.number(),
