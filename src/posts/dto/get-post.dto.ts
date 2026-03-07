@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createZodDto } from 'nestjs-zod';
 import { MediaSchema } from './media.dto';
 import { PaginatedOutputSchema } from 'src/common/dtos/pagination.dto';
+import { GetUserSchema } from 'src/users/dto/get-user.dto';
 
 export const GetPostSchema = z.object({
   id: z.uuid().describe('Identificador único do post'),
@@ -16,6 +17,12 @@ export const GetPostSchema = z.object({
     .array(MediaSchema)
     .default([])
     .describe('Lista de mídias (imagens/vídeos) do post'),
+  _count: z.object({
+    likes: z.number(),
+    comments: z.number(),
+    Media: z.number(),
+  }),
+  user: GetUserSchema,
 });
 
 export class GetPostDto extends createZodDto(GetPostSchema) {}
