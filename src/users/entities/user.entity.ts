@@ -2,15 +2,10 @@ import { z } from 'zod';
 import { isValidCPF } from 'src/shareds/helpers/isValidCpf';
 
 export const UserSchema = z.object({
-  id: z.string().uuid().describe('User ID'),
-  email: z.string().email().describe('User Email'),
-  avatarUrl: z.string().url().optional(),
-  name: z
-    .string({
-      required_error: 'Name is required',
-    })
-    .min(2)
-    .describe('First Name'),
+  id: z.uuid().describe('User ID'),
+  email: z.email().describe('User Email'),
+  avatarUrl: z.url().optional(),
+  name: z.string().min(2).describe('First Name'),
   cpf: z
     .string()
     .min(11)
