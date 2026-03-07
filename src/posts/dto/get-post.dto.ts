@@ -16,11 +16,7 @@ export const GetPostSchema = z.object({
     .array(MediaSchema)
     .default([])
     .describe('Lista de mídias (imagens/vídeos) do post'),
-  thumbnailUrl: z
-    .url()
-    .optional()
-    .nullable()
-    .describe('URL da imagem/vídeo do media'),
+  thumbnailUrl: z.url().describe('URL da imagem/vídeo do media'),
   _count: z.object({
     likes: z.number(),
     comments: z.number(),
