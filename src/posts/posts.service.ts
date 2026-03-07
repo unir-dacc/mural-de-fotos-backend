@@ -72,6 +72,7 @@ export class PostsService {
       if (i === 0) {
         if (isImage) {
           const thumbnailBuffer = await sharp(file.buffer)
+            .rotate()
             .resize({
               width: 400,
               fit: 'inside',
@@ -152,6 +153,7 @@ export class PostsService {
       thumbnailBuffer = await this.extractVideoThumbnail(buffer);
     } else {
       thumbnailBuffer = await sharp(buffer)
+        .rotate()
         .resize({ width: 400, withoutEnlargement: true })
         .jpeg({ quality: 70 })
         .toBuffer();
