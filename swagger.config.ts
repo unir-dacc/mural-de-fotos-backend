@@ -10,9 +10,7 @@ const configSwagger = new DocumentBuilder()
       type: 'http',
       scheme: 'bearer',
       bearerFormat: 'JWT',
-      name: 'Authorization',
       description: 'Please enter a valid JWT token',
-      in: 'header',
     },
     'JWT-auth',
   )
