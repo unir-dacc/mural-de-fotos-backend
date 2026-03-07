@@ -7,8 +7,8 @@ export const GetUserSchema = z.object({
   name: z.string().describe('Name of the user'),
   cpf: z.string().describe('CPF of the user'),
 
-  avatarUrl: z.url().optional().nullable(),
-  bio: z.string().optional().nullable(),
+  avatarUrl: z.url().default(''),
+  bio: z.string().default(''),
 
   createdAt: z.string().describe('Date when the user was created'),
   updatedAt: z.string().describe('Date when the user was last updated'),
