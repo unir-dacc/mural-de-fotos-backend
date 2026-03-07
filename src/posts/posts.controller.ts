@@ -26,7 +26,7 @@ import { memoryStorage } from 'multer';
 import { PostsService } from './posts.service';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
-import { GetPostDto } from './dto/get-post.dto';
+import { GetPaginatedPostDto, GetPostDto } from './dto/get-post.dto';
 import { Public } from 'src/common/decorators/public-endpoint.decorator';
 
 @ApiTags('Posts')
@@ -130,6 +130,11 @@ export class PostsController {
     required: false,
     type: String,
     description: 'Faca uma busca',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Post atualizado com sucesso',
+    type: GetPaginatedPostDto,
   })
   async findAll(@Req() req, @Query() rawQuery: any) {
     const query: any = {
