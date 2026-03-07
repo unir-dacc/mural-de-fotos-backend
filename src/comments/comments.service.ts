@@ -7,7 +7,7 @@ export class CommentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventEmitter: EventEmitter2,
-  ) { }
+  ) {}
 
   async createComment(postId: string, userId: string, content: string) {
     const comment = await this.prisma.comment.create({
