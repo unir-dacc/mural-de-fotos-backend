@@ -1,5 +1,6 @@
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { INestApplication } from '@nestjs/common';
+import { cleanupOpenApiDoc } from 'nestjs-zod';
 
 const configSwagger = new DocumentBuilder()
   .setTitle('API')
@@ -20,7 +21,7 @@ const configSwagger = new DocumentBuilder()
 function setupSwagger(app: INestApplication) {
   const document = SwaggerModule.createDocument(app, configSwagger);
   const path = process.env.ROUTE || '';
-  SwaggerModule.setup(`${path}/docs`, app, document, {
+  SwaggerModule.setup(`${path}/docs`, app, cleanupOpenApiDoc(document), {
     jsonDocumentUrl: `${path}/swagger/json`,
     customSiteTitle: 'API',
   });

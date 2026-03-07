@@ -3,7 +3,6 @@ import { AppModule } from './app.module';
 import { patchNestJsSwagger } from 'nestjs-zod';
 import setupSwagger from 'swagger.config';
 import { PrismaExceptionFilters } from './common/filters/prisma-exception.filter';
-import { ZodFilter } from './common/filters/zod-exception.filter';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
@@ -18,7 +17,6 @@ async function bootstrap() {
 
   app.setGlobalPrefix(process.env.ROUTE || '');
   app.enableCors();
-  app.useGlobalFilters(new ZodFilter());
   app.useGlobalFilters(new PrismaExceptionFilters());
 
   patchNestJsSwagger();
