@@ -44,6 +44,8 @@ model Post {
   userId String
   user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  thumbnailUrl String?
+
   comments Comment[]
   likes    Like[]
   Media    Media[]
