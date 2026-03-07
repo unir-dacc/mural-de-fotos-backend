@@ -14,8 +14,8 @@ export const UserSchema = z.object({
     .describe('User CPF'),
   bio: z.string().optional(),
 
-  createdAt: z.string().datetime().optional().describe('Date of Creation'),
-  updatedAt: z.string().datetime().optional().describe('Date of Update'),
+  createdAt: z.string().optional().describe('Date of Creation'),
+  updatedAt: z.string().optional().describe('Date of Update'),
 });
 
 export const UserOrderType = Object.keys(UserSchema.omit({ id: true }).shape);
