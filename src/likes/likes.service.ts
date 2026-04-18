@@ -10,18 +10,20 @@ export class LikesService {
   ) {}
 
   async likePost(postId: string, userId: string) {
-    this.eventEmitter.emit('post.liked', {
-      postId,
-      userId,
-    });
-
-    return this.prisma.like.upsert({
+    const like = await this.prisma.like.upsert({
       where: {
         userId_postId: { userId, postId },
       },
       update: {},
       create: { userId, postId },
     });
+
+    this.eventEmitter.emit('post.liked', {
+      postId,
+      userId,
+    });
+
+    return like;
   }
 
   async unlikePost(postId: string, userId: string) {

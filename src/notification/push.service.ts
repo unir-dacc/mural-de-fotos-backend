@@ -3,9 +3,13 @@ import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from 'src/databases/prisma/prisma.service';
 
-type PostNotificationType = 'comment' | 'like' | 'face_detected' | 'new_post';
+export type PostNotificationType =
+  | 'comment'
+  | 'like'
+  | 'face_detected'
+  | 'new_post';
 
-type PostNotificationPayload = {
+export type PostNotificationPayload = {
   type: PostNotificationType;
   postId: string;
   mediaId?: string;
