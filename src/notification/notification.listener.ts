@@ -64,6 +64,16 @@ export class NotificationListener {
       },
     });
 
+    const like = await this.prisma.like.findUnique({
+      where: {
+        userId_postId: {
+          userId,
+          postId,
+        },
+      },
+    });
+
+    if (!like) return;
     if (!post) return;
     if (post.userId === userId) return;
 
