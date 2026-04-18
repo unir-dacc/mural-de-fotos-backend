@@ -10,18 +10,17 @@ export class LikesService {
   ) {}
 
   async likePost(postId: string, userId: string) {
-    const like = await this.prisma.like.upsert({
-      where: {
-        userId_postId: { userId, postId },
-      },
-      update: {},
-      create: { userId, postId },
+    const existing = await this.prisma.like.findUnique({
+      where: { userId_postId: { userId, postId } },
     });
 
-    this.eventEmitter.emit('post.liked', {
-      postId,
-      userId,
+    if (existing) return existing;
+
+    const like = await this.prisma.like.create({
+      data: { userId, postId },
     });
+
+    this.eventEmitter.emit('post.liked', { postId, userId });
 
     return like;
   }
