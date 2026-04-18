@@ -151,14 +151,23 @@ export class UsersService {
   async update(id: string, updateUserDto: UpdateUserDto) {
     const parsedDto = UpdateUserSchema.parse(updateUserDto);
 
+    const data: any = parsedDto;
     if (parsedDto.password) {
-      parsedDto.password = await bcrypt.hash(parsedDto.password, 10);
+      data.password = await bcrypt.hash(parsedDto.password, 10);
+    }
+    if (parsedDto.token && parsedDto.platform) {
+      data.PushToken = {
+        create: {
+          token: parsedDto.token,
+          platform: parsedDto.platform,
+        },
+      };
     }
 
     const user = await this.prisma.user.update({
       where: { id },
       data: {
-        ...parsedDto,
+        ...data,
       },
       omit: {
         cpf: true,
