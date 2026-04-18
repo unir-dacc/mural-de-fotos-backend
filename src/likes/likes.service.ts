@@ -1,11 +1,20 @@
 import { Injectable } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from 'src/databases/prisma/prisma.service';
 
 @Injectable()
 export class LikesService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly eventEmitter: EventEmitter2,
+  ) {}
 
   async likePost(postId: string, userId: string) {
+    this.eventEmitter.emit('post.liked', {
+      postId,
+      userId,
+    });
+
     return this.prisma.like.upsert({
       where: {
         userId_postId: { userId, postId },
