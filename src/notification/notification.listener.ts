@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { EmailService } from './email.service';
 import { PrismaService } from 'src/databases/prisma/prisma.service';
@@ -12,6 +12,8 @@ export class NotificationListener {
     private readonly prisma: PrismaService,
     private readonly expoPush: PushService,
   ) {}
+
+  private readonly logger = new Logger(NotificationListener.name);
 
   @OnEvent('comment.created')
   async handleCommentCreatedEvent(payload: {
@@ -64,16 +66,6 @@ export class NotificationListener {
       },
     });
 
-    const like = await this.prisma.like.findUnique({
-      where: {
-        userId_postId: {
-          userId,
-          postId,
-        },
-      },
-    });
-
-    if (!like) return;
     if (!post) return;
     if (post.userId === userId) return;
 
@@ -83,8 +75,8 @@ export class NotificationListener {
 
     if (!actor) return;
 
-    await this.expoPush.sendPostNotification([post.user], {
-      type: 'like',
+    const data = {
+      type: 'like' as const,
       postId: post.id,
       actorId: actor.id,
       actorName: actor.name ?? 'Alguém',
@@ -93,7 +85,11 @@ export class NotificationListener {
       body: `${actor.name ?? 'Alguém'} curtiu seu post`,
 
       previewImage: post.thumbnailUrl ?? undefined,
-    });
+    };
+
+    this.logger.log(data);
+
+    await this.expoPush.sendPostNotification([post.user], data);
   }
 
   @OnEvent('password.reset')
