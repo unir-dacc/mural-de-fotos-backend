@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Expo, ExpoPushMessage } from 'expo-server-sdk';
+import { Expo, ExpoPushMessage, ExpoPushToken } from 'expo-server-sdk';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from 'src/databases/prisma/prisma.service';
 
@@ -20,12 +20,10 @@ export type PostNotificationPayload = {
   title: string;
   body: string;
 
-  image?: string;
+  imageUrl?: string;
 };
 
-type PushMessageInput = Omit<ExpoPushMessage, 'to'> & {
-  image?: string;
-};
+type InternalPushMessage = Omit<ExpoPushMessage, 'to'> & { imageUrl?: string };
 
 @Injectable()
 export class PushService {
@@ -36,7 +34,7 @@ export class PushService {
 
   async sendPushToUsers(
     users: Prisma.UserGetPayload<{ include: { PushToken: true } }>[],
-    message: PushMessageInput,
+    message: InternalPushMessage,
   ) {
     const tokens = users
       .flatMap((u) => u.PushToken || [])
@@ -55,10 +53,7 @@ export class PushService {
       categoryId: message.categoryId,
       data: message.data,
       mutableContent: true,
-      ...(message.image
-        ? { _displayInForeground: true, image: message.image }
-        : {}),
-      image: message.image,
+      attachments: message.imageUrl ? [{ url: message.imageUrl }] : undefined,
     }));
 
     const chunks = this.expo.chunkPushNotifications(messages);
@@ -105,16 +100,15 @@ export class PushService {
       body: payload.body,
       sound: 'default',
       categoryId,
-
-      image: payload.image,
-
       data: {
         type: payload.type,
         postId: payload.postId,
         mediaId: payload.mediaId,
         actorId: payload.actorId,
         actorName: payload.actorName,
+        imageUrl: payload.imageUrl,
       },
+      imageUrl: payload.imageUrl,
     });
   }
 }

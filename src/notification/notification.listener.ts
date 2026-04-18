@@ -51,7 +51,7 @@ export class NotificationListener {
       title: 'Novo comentário',
       body: `${author.name ?? 'Alguém'} comentou: "${comment.content}"`,
 
-      image: post.thumbnailUrl ?? undefined,
+      imageUrl: post.thumbnailUrl ?? undefined,
     });
   }
 
@@ -83,7 +83,7 @@ export class NotificationListener {
 
       title: 'Novo like ❤️',
       body: `${actor.name ?? 'Alguém'} curtiu seu post`,
-      image: post.thumbnailUrl ?? undefined,
+      imageUrl: post.thumbnailUrl ?? undefined,
     };
 
     this.logger.log(data);
@@ -133,7 +133,7 @@ export class NotificationListener {
       title: 'Você apareceu em uma foto',
       body: `${user.name ?? 'Alguém'} te marcou em uma imagem`,
 
-      image: media.url ?? undefined,
+      imageUrl: media.url ?? undefined,
     });
   }
 }
