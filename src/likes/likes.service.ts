@@ -10,25 +10,20 @@ export class LikesService {
   ) {}
 
   async likePost(postId: string, userId: string) {
-    try {
-      const like = await this.prisma.like.create({
-        data: { userId, postId },
-      });
+    const like = await this.prisma.like.upsert({
+      where: {
+        userId_postId: { userId, postId },
+      },
+      update: {},
+      create: { userId, postId },
+    });
 
-      this.eventEmitter.emit('post.liked', {
-        postId,
-        userId,
-      });
+    this.eventEmitter.emit('post.liked', {
+      postId,
+      userId,
+    });
 
-      return like;
-    } catch (error) {
-      if (error.code === 'P2002') {
-        return this.prisma.like.findUnique({
-          where: { userId_postId: { userId, postId } },
-        });
-      }
-      throw error;
-    }
+    return like;
   }
 
   async unlikePost(postId: string, userId: string) {
