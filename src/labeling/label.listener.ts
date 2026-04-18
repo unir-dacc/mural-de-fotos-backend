@@ -180,6 +180,7 @@ export class PostCreatedListener {
         });
         if (cluster?.userId) {
           this.logger.log(`Sending notification to user: ${cluster.userId}`);
+
           await this.sendNotification(result.entityId);
         }
       }

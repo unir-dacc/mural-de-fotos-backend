@@ -28,7 +28,7 @@ export class AwsUploadService {
 
     if (!region || !accessKeyId || !secretAccessKey || !bucket) {
       throw new Error(
-        'AWS S3 envs ausentes: verifique AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_PUBLIC_BUCKET_NAME',
+        'AWS S3 envs ausentes: verifique AWS_REGION, AWS_ACCESS_KEY, AWS_SECRET_KEY, AWS_PUBLIC_BUCKET_NAME',
       );
     }
 
