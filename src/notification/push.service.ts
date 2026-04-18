@@ -50,7 +50,11 @@ export class PushService {
       sound: message.sound,
       categoryId: message.categoryId,
       data: message.data,
-      ...(message.image ? { image: message.image } : {}),
+      mutableContent: true,
+      ...(message.image
+        ? { _displayInForeground: true, image: message.image }
+        : {}),
+      image: message.image,
     }));
 
     const chunks = this.expo.chunkPushNotifications(messages);
