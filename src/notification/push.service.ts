@@ -20,7 +20,7 @@ export type PostNotificationPayload = {
   title: string;
   body: string;
 
-  previewImage?: string;
+  image?: string;
 };
 
 type PushMessageInput = Omit<ExpoPushMessage, 'to'> & {
@@ -106,7 +106,7 @@ export class PushService {
       sound: 'default',
       categoryId,
 
-      image: payload.previewImage,
+      image: payload.image,
 
       data: {
         type: payload.type,
