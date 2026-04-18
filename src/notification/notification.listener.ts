@@ -2,8 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { EmailService } from './email.service';
 import { PrismaService } from 'src/databases/prisma/prisma.service';
-import { Comment, Prisma } from '@prisma/client';
 import { PushService } from './push.service';
+import { Comment } from '@prisma/client';
 
 @Injectable()
 export class NotificationListener {
@@ -24,59 +24,32 @@ export class NotificationListener {
     const post = await this.prisma.post.findUnique({
       where: { id: postId },
       include: {
-        comments: {
-          include: {
-            user: {
-              include: {
-                PushToken: true,
-              },
-            },
-          },
-        },
-        user: {
-          include: {
-            PushToken: true,
-          },
-        },
+        user: { include: { PushToken: true } },
       },
     });
 
     if (!post) return;
 
-    const commentUsers = post.comments.map((c) => c.user);
-
     const author = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: {
-        PushToken: true,
-      },
     });
 
     if (!author) return;
 
-    const recipientsMap = new Map<string, typeof author>();
-
-    [...commentUsers, post.user].forEach((u) => {
-      if (u.id !== userId) {
-        recipientsMap.set(u.id, u);
-      }
-    });
-
-    const recipients = Array.from(recipientsMap.values());
-
-    if (recipients.length === 0) return;
+    const recipients = [post.user].filter((u) => u.id !== userId);
 
     await this.emailService.sendCommentNotification(comment, post, recipients);
 
-    await this.expoPush.sendPushToUsers(recipients, {
+    await this.expoPush.sendPostNotification(recipients, {
+      type: 'comment',
+      postId: post.id,
+      actorId: author.id,
+      actorName: author.name ?? 'Alguém',
+
       title: 'Novo comentário',
       body: `${author.name ?? 'Alguém'} comentou: "${comment.content}"`,
-      sound: 'default',
-      categoryId: 'post_notification',
-      data: {
-        type: 'comment',
-        postId: post.id,
-      },
+
+      previewImage: post.thumbnailUrl ?? undefined,
     });
   }
 
@@ -87,31 +60,29 @@ export class NotificationListener {
     const post = await this.prisma.post.findUnique({
       where: { id: postId },
       include: {
-        user: {
-          include: {
-            PushToken: true,
-          },
-        },
+        user: { include: { PushToken: true } },
       },
     });
 
     if (!post) return;
-
     if (post.userId === userId) return;
 
-    const author = await this.prisma.user.findUnique({
+    const actor = await this.prisma.user.findUnique({
       where: { id: userId },
     });
 
-    await this.expoPush.sendPushToUsers([post.user], {
+    if (!actor) return;
+
+    await this.expoPush.sendPostNotification([post.user], {
+      type: 'like',
+      postId: post.id,
+      actorId: actor.id,
+      actorName: actor.name ?? 'Alguém',
+
       title: 'Novo like ❤️',
-      body: `${author?.name ?? 'Alguém'} curtiu seu post`,
-      sound: 'default',
-      categoryId: 'post_notification',
-      data: {
-        type: 'like',
-        postId: post.id,
-      },
+      body: `${actor.name ?? 'Alguém'} curtiu seu post`,
+
+      previewImage: post.thumbnailUrl ?? undefined,
     });
   }
 
@@ -120,52 +91,44 @@ export class NotificationListener {
     email: string;
     resetPasswordCode: string;
   }) {
-    const { email, resetPasswordCode } = payload;
-
-    await this.emailService.sendPasswordRecovery(email, resetPasswordCode);
+    await this.emailService.sendPasswordRecovery(
+      payload.email,
+      payload.resetPasswordCode,
+    );
   }
 
   @OnEvent('face.detected')
-  async handleFaceDetected(
-    entity: Prisma.EntityGetPayload<{
-      include: {
-        media: {
-          include: {
-            post: {
-              include: {
-                user: {
-                  include: { PushToken: true };
-                };
-              };
-            };
-          };
-        };
-        EntityCluster: { include: { user: { include: { PushToken: true } } } };
-      };
-    }>,
-  ) {
-    const targetUser = entity.EntityCluster?.user;
+  async handleFaceDetected(payload: any) {
+    const targetUser = await this.prisma.user.findUnique({
+      where: { id: payload.EntityCluster?.user?.id },
+      include: { PushToken: true },
+    });
 
     if (!targetUser) return;
 
-    const userEmail = targetUser.email;
+    const post = payload.media.post;
+    const media = payload.media;
+    const user = post.user;
 
-    const post = entity.media.post;
-    const user = entity.media.post.user;
-    const media = entity.media;
+    await this.emailService.sendFaceDetected(
+      targetUser.email,
+      post,
+      user,
+      media,
+    );
 
-    await this.emailService.sendFaceDetected(userEmail, post, user, media);
+    await this.expoPush.sendPostNotification([targetUser], {
+      type: 'face_detected',
+      postId: post.id,
+      mediaId: media.id,
 
-    await this.expoPush.sendPushToUsers([targetUser], {
+      actorId: user.id,
+      actorName: user.name ?? 'Alguém',
+
       title: 'Você apareceu em uma foto',
-      body: `${user.name} te marcou em uma imagem`,
-      sound: 'default',
-      categoryId: 'post_notification',
-      data: {
-        type: 'face_detected',
-        postId: post.id,
-        mediaId: media.id,
-      },
+      body: `${user.name ?? 'Alguém'} te marcou em uma imagem`,
+
+      previewImage: media.url ?? undefined,
     });
   }
 }

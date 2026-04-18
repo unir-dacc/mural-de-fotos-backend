@@ -3,6 +3,26 @@ import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from 'src/databases/prisma/prisma.service';
 
+type PostNotificationType = 'comment' | 'like' | 'face_detected' | 'new_post';
+
+type PostNotificationPayload = {
+  type: PostNotificationType;
+  postId: string;
+  mediaId?: string;
+
+  actorId?: string;
+  actorName?: string;
+
+  title: string;
+  body: string;
+
+  previewImage?: string;
+};
+
+type PushMessageInput = Omit<ExpoPushMessage, 'to'> & {
+  image?: string;
+};
+
 @Injectable()
 export class PushService {
   private expo = new Expo();
@@ -12,24 +32,28 @@ export class PushService {
 
   async sendPushToUsers(
     users: Prisma.UserGetPayload<{ include: { PushToken: true } }>[],
-    message: Omit<ExpoPushMessage, 'to'>,
+    message: PushMessageInput,
   ) {
-    const tokensWithMeta = users
+    const tokens = users
       .flatMap((u) => u.PushToken || [])
       .filter((t) => Expo.isExpoPushToken(t.token));
 
-    if (tokensWithMeta.length === 0) {
+    if (!tokens.length) {
       this.logger.debug('Nenhum token válido encontrado.');
       return;
     }
 
-    const messages = tokensWithMeta.map((t) => ({
+    const messages: ExpoPushMessage[] = tokens.map((t) => ({
       to: t.token,
-      ...message,
+      title: message.title,
+      body: message.body,
+      sound: message.sound,
+      categoryId: message.categoryId,
+      data: message.data,
+      ...(message.image ? { image: message.image } : {}),
     }));
 
     const chunks = this.expo.chunkPushNotifications(messages);
-
     const invalidTokens: string[] = [];
 
     for (const chunk of chunks) {
@@ -41,8 +65,7 @@ export class PushService {
             const error = receipt.details?.error;
 
             if (error === 'DeviceNotRegistered') {
-              const token = chunk[index].to as string;
-              invalidTokens.push(token);
+              invalidTokens.push(chunk[index].to as string);
             }
 
             this.logger.warn(
@@ -50,19 +73,40 @@ export class PushService {
             );
           }
         });
-      } catch (error) {
-        this.logger.error('Erro ao enviar push:', error);
+      } catch (err) {
+        this.logger.error('Erro ao enviar push:', err);
       }
     }
 
-    if (invalidTokens.length > 0) {
-      this.logger.warn(`Removendo ${invalidTokens.length} tokens inválidos...`);
-
+    if (invalidTokens.length) {
       await this.prisma.pushToken.deleteMany({
-        where: {
-          token: { in: invalidTokens },
-        },
+        where: { token: { in: invalidTokens } },
       });
     }
+  }
+
+  async sendPostNotification(
+    users: Prisma.UserGetPayload<{ include: { PushToken: true } }>[],
+    payload: PostNotificationPayload,
+  ) {
+    const categoryId =
+      payload.type === 'new_post' ? 'new_post' : 'default_notification';
+
+    return this.sendPushToUsers(users, {
+      title: payload.title,
+      body: payload.body,
+      sound: 'default',
+      categoryId,
+
+      image: payload.previewImage,
+
+      data: {
+        type: payload.type,
+        postId: payload.postId,
+        mediaId: payload.mediaId,
+        actorId: payload.actorId,
+        actorName: payload.actorName,
+      },
+    });
   }
 }
