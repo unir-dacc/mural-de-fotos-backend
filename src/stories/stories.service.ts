@@ -1,10 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import {
-  Prisma,
-  StoryType,
-  StoryVisibility,
-} from '@prisma/client';
+import { Prisma, StoryType, StoryVisibility } from '@prisma/client';
 import { PrismaService } from 'src/databases/prisma/prisma.service';
 import { PushService } from 'src/notification/push.service';
 
@@ -32,23 +28,29 @@ type GlobalPostCandidate = {
 };
 
 @Injectable()
-export class StoriesService {
+export class StoriesService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pushService: PushService,
   ) {}
 
-  @Cron('0 13 * * *', {
+  async onModuleInit() {
+    await this.runStoriesGeneration();
+  }
+
+  @Cron('0 11 * * *', {
     name: 'stories-generation-and-cleanup',
     timeZone: 'America/Porto_Velho',
   })
   async handleStoriesCron() {
-    await this.deleteExpiredStories();
+    await this.runStoriesGeneration();
+  }
 
-    const now = new Date();
-    await this.generateQuarterlyRetrospectives(now);
-    await this.generateYearlyRetrospectives(now);
-    await this.generateGlobalYearlyRetrospective(now);
+  private async runStoriesGeneration(referenceDate = new Date()) {
+    await this.deleteExpiredStories();
+    await this.generateQuarterlyRetrospectives(referenceDate);
+    await this.generateYearlyRetrospectives(referenceDate);
+    await this.generateGlobalYearlyRetrospective(referenceDate);
   }
 
   async findAvailableStories(userId: string) {
@@ -130,7 +132,7 @@ export class StoriesService {
 
   private async generateQuarterlyRetrospectives(referenceDate: Date) {
     const period = this.getPreviousQuarterPeriod(referenceDate);
-    if (!this.isWithinGenerationWindow(referenceDate, period.end)) return;
+    if (!this.hasReachedDate(referenceDate, period.end)) return;
 
     const users = await this.prisma.user.findMany({
       select: { id: true, name: true },
@@ -159,12 +161,8 @@ export class StoriesService {
   }
 
   private async generateYearlyRetrospectives(referenceDate: Date) {
-    const generationDate = this.getFirstBusinessDayOfDecember(
-      referenceDate.getFullYear(),
-    );
-    if (!this.isWithinGenerationWindow(referenceDate, generationDate)) return;
-
-    const period = this.getCurrentYearRetrospectivePeriod(referenceDate);
+    const period = this.getLatestAvailableYearlyPeriod(referenceDate);
+    if (!period) return;
 
     const users = await this.prisma.user.findMany({
       select: { id: true, name: true },
@@ -193,12 +191,8 @@ export class StoriesService {
   }
 
   private async generateGlobalYearlyRetrospective(referenceDate: Date) {
-    const generationDate = this.getFirstBusinessDayOfDecember(
-      referenceDate.getFullYear(),
-    );
-    if (!this.isWithinGenerationWindow(referenceDate, generationDate)) return;
-
-    const period = this.getCurrentYearRetrospectivePeriod(referenceDate);
+    const period = this.getLatestAvailableYearlyPeriod(referenceDate);
+    if (!period) return;
 
     const topPosts = await this.findTopGlobalPosts(period.start, period.end);
 
@@ -243,7 +237,9 @@ export class StoriesService {
     if (existing) return;
 
     const uniqueMedia = Array.from(
-      new Map(params.mediaCandidates.map((item) => [item.mediaId, item])).values(),
+      new Map(
+        params.mediaCandidates.map((item) => [item.mediaId, item]),
+      ).values(),
     );
 
     const story = await this.prisma.story.create({
@@ -314,7 +310,9 @@ export class StoriesService {
   }
 
   private async findTopGlobalPosts(periodStart: Date, periodEnd: Date) {
-    const result = await this.prisma.$queryRaw<GlobalPostCandidate[]>(Prisma.sql`
+    const result = await this.prisma.$queryRaw<
+      GlobalPostCandidate[]
+    >(Prisma.sql`
       SELECT
         p.id AS "postId",
         (
@@ -347,7 +345,7 @@ export class StoriesService {
         },
         isVideo: false,
       },
-      orderBy: [{ order: 'asc' }],
+      orderBy: [{ postId: 'asc' }, { order: 'asc' }],
       select: {
         id: true,
         postId: true,
@@ -355,21 +353,19 @@ export class StoriesService {
       },
     });
 
-    const firstMediaByPost = new Map<string, UserMediaCandidate>();
+    const mediasByPost = new Map<string, UserMediaCandidate[]>();
 
     for (const media of medias) {
-      if (firstMediaByPost.has(media.postId)) continue;
-
-      firstMediaByPost.set(media.postId, {
+      const items = mediasByPost.get(media.postId) ?? [];
+      items.push({
         mediaId: media.id,
         postId: media.postId,
         createdAt: media.createdAt,
       });
+      mediasByPost.set(media.postId, items);
     }
 
-    return posts
-      .map((post) => firstMediaByPost.get(post.postId))
-      .filter((item): item is UserMediaCandidate => !!item);
+    return posts.flatMap((post) => mediasByPost.get(post.postId) ?? []);
   }
 
   private mapStory(story: StoryWithItems) {
@@ -410,8 +406,7 @@ export class StoriesService {
     return { start, end };
   }
 
-  private getCurrentYearRetrospectivePeriod(referenceDate: Date) {
-    const year = referenceDate.getFullYear();
+  private getYearRetrospectivePeriod(year: number) {
     const start = new Date(year, 0, 1, 0, 0, 0, 0);
     const end = this.getFirstBusinessDayOfDecember(year);
 
@@ -431,12 +426,31 @@ export class StoriesService {
     return result;
   }
 
-  private isWithinGenerationWindow(referenceDate: Date, periodEnd: Date) {
-    const current = this.startOfDay(referenceDate).getTime();
-    const end = this.startOfDay(periodEnd).getTime();
-    const diffInDays = Math.floor((current - end) / (1000 * 60 * 60 * 24));
+  private getLatestAvailableYearlyPeriod(referenceDate: Date) {
+    const currentYear = referenceDate.getFullYear();
+    const currentYearGenerationDate =
+      this.getFirstBusinessDayOfDecember(currentYear);
 
-    return diffInDays >= 0 && diffInDays < 14;
+    if (this.hasReachedDate(referenceDate, currentYearGenerationDate)) {
+      return this.getYearRetrospectivePeriod(currentYear);
+    }
+
+    const previousYear = currentYear - 1;
+    const previousYearGenerationDate =
+      this.getFirstBusinessDayOfDecember(previousYear);
+
+    if (this.hasReachedDate(referenceDate, previousYearGenerationDate)) {
+      return this.getYearRetrospectivePeriod(previousYear);
+    }
+
+    return null;
+  }
+
+  private hasReachedDate(referenceDate: Date, targetDate: Date) {
+    const current = this.startOfDay(referenceDate).getTime();
+    const target = this.startOfDay(targetDate).getTime();
+
+    return current >= target;
   }
 
   private startOfDay(date: Date) {

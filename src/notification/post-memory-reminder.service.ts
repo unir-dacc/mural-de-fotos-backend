@@ -23,7 +23,7 @@ export class PostMemoryReminderService {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
-  @Cron('0 13 * * *', {
+  @Cron('0 11 * * *', {
     name: 'post-memory-reminder',
     timeZone: 'America/Porto_Velho',
   })
