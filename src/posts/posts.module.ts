@@ -9,6 +9,7 @@ import { ConfigModule } from '@nestjs/config';
 import { NotificationListener } from 'src/notification/notification.listener';
 import { PostMemoryReminderService } from 'src/notification/post-memory-reminder.service';
 import { PushService } from 'src/notification/push.service';
+import { PostsStartupService } from './posts-startup.service';
 
 @Module({
   imports: [EventEmitterModule.forRoot(), AwsUploadModule, ConfigModule],
@@ -20,6 +21,7 @@ import { PushService } from 'src/notification/push.service';
     PostMemoryReminderService,
     EmailService,
     PushService,
+    PostsStartupService,
   ],
 })
 export class PostsModule {}
