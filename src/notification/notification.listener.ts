@@ -4,6 +4,7 @@ import { EmailService } from './email.service';
 import { PrismaService } from 'src/databases/prisma/prisma.service';
 import { PushService } from './push.service';
 import { Comment, Post } from '@prisma/client';
+import { PostMemoryReminderType } from './post-memory-reminder.service';
 
 @Injectable()
 export class NotificationListener {
@@ -128,7 +129,8 @@ export class NotificationListener {
       title: 'Nova publicação',
       body: `${author.name ?? 'Alguém'} publicou uma nova foto`,
 
-      imageUrl: payload.thumbnailUrl ?? payload.Media?.[0]?.imageUrl ?? undefined,
+      imageUrl:
+        payload.thumbnailUrl ?? payload.Media?.[0]?.imageUrl ?? undefined,
     });
   }
 
@@ -165,5 +167,52 @@ export class NotificationListener {
 
       imageUrl: media.url ?? undefined,
     });
+  }
+
+  @OnEvent('post.memory_reminder')
+  async handlePostMemoryReminderEvent(payload: {
+    postId: string;
+    authorId: string;
+    authorName?: string | null;
+    thumbnailUrl?: string | null;
+    type: PostMemoryReminderType;
+  }) {
+    const recipients = await this.prisma.user.findMany({
+      include: { PushToken: true },
+    });
+
+    const usersWithTokens = recipients.filter(
+      (user) => user.PushToken.length > 0,
+    );
+
+    if (!usersWithTokens.length) return;
+
+    await this.expoPush.sendPostNotification(usersWithTokens, {
+      type: 'memory_reminder',
+      postId: payload.postId,
+      actorId: payload.authorId,
+      actorName: payload.authorName ?? 'Alguém',
+      title: 'Lembre este momento',
+      body: this.getMemoryReminderBody(payload.authorName, payload.type),
+      imageUrl: payload.thumbnailUrl ?? undefined,
+    });
+  }
+
+  private getMemoryReminderBody(
+    authorName: string | null | undefined,
+    type: PostMemoryReminderType,
+  ) {
+    const name = authorName ?? 'Alguém';
+
+    switch (type) {
+      case 'ONE_WEEK':
+        return `${name} publicou esta foto há 1 semana`;
+      case 'ONE_MONTH':
+        return `${name} publicou esta foto há 1 mês`;
+      case 'SIX_MONTHS':
+        return `${name} publicou esta foto há 6 meses`;
+      case 'YEARLY':
+        return `${name} publicou esta foto neste mesmo dia em outro ano`;
+    }
   }
 }

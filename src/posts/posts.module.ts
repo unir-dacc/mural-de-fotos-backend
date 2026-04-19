@@ -7,15 +7,23 @@ import { EmailService } from 'src/notification/email.service';
 import { AwsUploadModule } from 'src/aws/aws.module';
 import { ConfigModule } from '@nestjs/config';
 import { NotificationListener } from 'src/notification/notification.listener';
+import { PostMemoryReminderService } from 'src/notification/post-memory-reminder.service';
 import { PushService } from 'src/notification/push.service';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
-  imports: [EventEmitterModule.forRoot(), AwsUploadModule, ConfigModule],
+  imports: [
+    EventEmitterModule.forRoot(),
+    ScheduleModule.forRoot(),
+    AwsUploadModule,
+    ConfigModule,
+  ],
   controllers: [PostsController],
   providers: [
     PostsService,
     PrismaService,
     NotificationListener,
+    PostMemoryReminderService,
     EmailService,
     PushService,
   ],
