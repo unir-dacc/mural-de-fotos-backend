@@ -1,10 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import {
-  Prisma,
-  StoryType,
-  StoryVisibility,
-} from '@prisma/client';
+import { Prisma, StoryType, StoryVisibility } from '@prisma/client';
 import { PrismaService } from 'src/databases/prisma/prisma.service';
 import { PushService } from 'src/notification/push.service';
 
@@ -38,7 +34,7 @@ export class StoriesService {
     private readonly pushService: PushService,
   ) {}
 
-  @Cron('0 13 * * *', {
+  @Cron('0 11 * * *', {
     name: 'stories-generation-and-cleanup',
     timeZone: 'America/Porto_Velho',
   })
@@ -243,7 +239,9 @@ export class StoriesService {
     if (existing) return;
 
     const uniqueMedia = Array.from(
-      new Map(params.mediaCandidates.map((item) => [item.mediaId, item])).values(),
+      new Map(
+        params.mediaCandidates.map((item) => [item.mediaId, item]),
+      ).values(),
     );
 
     const story = await this.prisma.story.create({
@@ -314,7 +312,9 @@ export class StoriesService {
   }
 
   private async findTopGlobalPosts(periodStart: Date, periodEnd: Date) {
-    const result = await this.prisma.$queryRaw<GlobalPostCandidate[]>(Prisma.sql`
+    const result = await this.prisma.$queryRaw<
+      GlobalPostCandidate[]
+    >(Prisma.sql`
       SELECT
         p.id AS "postId",
         (
@@ -347,7 +347,7 @@ export class StoriesService {
         },
         isVideo: false,
       },
-      orderBy: [{ order: 'asc' }],
+      orderBy: [{ postId: 'asc' }, { order: 'asc' }],
       select: {
         id: true,
         postId: true,
@@ -355,21 +355,19 @@ export class StoriesService {
       },
     });
 
-    const firstMediaByPost = new Map<string, UserMediaCandidate>();
+    const mediasByPost = new Map<string, UserMediaCandidate[]>();
 
     for (const media of medias) {
-      if (firstMediaByPost.has(media.postId)) continue;
-
-      firstMediaByPost.set(media.postId, {
+      const items = mediasByPost.get(media.postId) ?? [];
+      items.push({
         mediaId: media.id,
         postId: media.postId,
         createdAt: media.createdAt,
       });
+      mediasByPost.set(media.postId, items);
     }
 
-    return posts
-      .map((post) => firstMediaByPost.get(post.postId))
-      .filter((item): item is UserMediaCandidate => !!item);
+    return posts.flatMap((post) => mediasByPost.get(post.postId) ?? []);
   }
 
   private mapStory(story: StoryWithItems) {
