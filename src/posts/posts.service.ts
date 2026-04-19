@@ -22,6 +22,12 @@ interface UploadItem {
   uploadPromise: Promise<{ url: string }>;
 }
 
+interface OptimizedMediaResult {
+  buffer: Buffer;
+  mimeType: string;
+  extension: string;
+}
+
 @Injectable()
 export class PostsService {
   constructor(
@@ -42,6 +48,7 @@ export class PostsService {
     const parsed = CreatePostSchema.parse(createPostDto);
 
     const uploads: UploadItem[] = [];
+    let thumbnailUrl: string | null = null;
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -60,6 +67,13 @@ export class PostsService {
       const optimizedMedia = isVideo
         ? await this.optimizeVideo(file.buffer)
         : await this.optimizeImage(file.buffer);
+
+      if (i === 0) {
+        thumbnailUrl = isVideo
+          ? await this.uploadThumbnailFromVideoBuffer(file.buffer, uniqueSuffix)
+          : null;
+      }
+
       const filename = isVideo
         ? `${uniqueSuffix}.mp4`
         : `${uniqueSuffix}.${optimizedMedia.extension}`;
@@ -85,7 +99,7 @@ export class PostsService {
       data: {
         ...parsed,
         userId,
-        thumbnailUrl: originalResults[0]?.url ?? null,
+        thumbnailUrl: thumbnailUrl ?? originalResults[0]?.url ?? null,
         Media: {
           create: originalResults.map((result, index) => ({
             imageUrl: result.url,
@@ -119,6 +133,23 @@ export class PostsService {
     const buffer = Buffer.from(await response.arrayBuffer());
 
     return isVideo ? this.optimizeVideo(buffer) : this.optimizeImage(buffer);
+  }
+
+  async generateThumbnailFromVideoUrl(
+    mediaUrl: string,
+    postId: string,
+  ): Promise<string> {
+    const response = await fetch(mediaUrl);
+
+    if (!response.ok) {
+      throw new InternalServerErrorException(
+        `Falha ao baixar o vídeo para thumbnail: ${mediaUrl}`,
+      );
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+
+    return this.uploadThumbnailFromVideoBuffer(buffer, `${Date.now()}-${postId}`);
   }
 
   async generateThumbnailFromUrl(
@@ -186,7 +217,7 @@ export class PostsService {
 
   private async optimizeImage(
     imageBuffer: Buffer,
-  ): Promise<{ buffer: Buffer; mimeType: string; extension: string }> {
+  ): Promise<OptimizedMediaResult> {
     const optimizedBuffer = await sharp(imageBuffer)
       .rotate()
       .resize({
@@ -207,7 +238,7 @@ export class PostsService {
 
   private async optimizeVideo(
     videoBuffer: Buffer,
-  ): Promise<{ buffer: Buffer; mimeType: string; extension: string }> {
+  ): Promise<OptimizedMediaResult> {
     const tmpDir = os.tmpdir();
     const uniqueId = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
     const inputPath = path.join(tmpDir, `video_input_${uniqueId}.mp4`);
@@ -241,6 +272,22 @@ export class PostsService {
       if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
       if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
     }
+  }
+
+  private async uploadThumbnailFromVideoBuffer(
+    videoBuffer: Buffer,
+    uniqueSuffix: string,
+  ): Promise<string> {
+    const thumbnailBuffer = await this.extractVideoThumbnail(videoBuffer);
+
+    const result = await this.aws.uploadFile({
+      buffer: thumbnailBuffer,
+      fileName: `thumb_${uniqueSuffix}.jpg`,
+      mimeType: 'image/jpeg',
+      folder: 'posts/thumbnails',
+    });
+
+    return result.url;
   }
 
   async findOne(id: string) {

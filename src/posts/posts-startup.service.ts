@@ -16,7 +16,6 @@ export class PostsStartupService implements OnModuleInit {
   async onModuleInit() {
     const posts = await this.prisma.post.findMany({
       where: {
-        thumbnailUrl: null,
         Media: {
           some: {},
         },
@@ -34,9 +33,29 @@ export class PostsStartupService implements OnModuleInit {
       return;
     }
 
-    this.logger.log(`Reprocessando ${posts.length} posts sem thumbnail`);
+    const postsToProcess = posts.filter((post) => {
+      const firstMedia = post.Media[0];
 
-    for (const post of posts) {
+      if (!firstMedia) {
+        return false;
+      }
+
+      if (post.thumbnailUrl === null) {
+        return true;
+      }
+
+      return firstMedia.isVideo && post.thumbnailUrl === firstMedia.imageUrl;
+    });
+
+    if (postsToProcess.length === 0) {
+      return;
+    }
+
+    this.logger.log(
+      `Reprocessando ${postsToProcess.length} posts com thumbnail pendente`,
+    );
+
+    for (const post of postsToProcess) {
       try {
         const uploadedMedia: Array<{ id: string; imageUrl: string }> = [];
 
@@ -63,6 +82,16 @@ export class PostsStartupService implements OnModuleInit {
           });
         }
 
+        const firstMedia = post.Media[0];
+        const firstUploadedMedia = uploadedMedia[0];
+        const thumbnailUrl =
+          firstMedia?.isVideo && firstUploadedMedia
+            ? await this.postsService.generateThumbnailFromVideoUrl(
+                firstUploadedMedia.imageUrl,
+                post.id,
+              )
+            : (firstUploadedMedia?.imageUrl ?? post.thumbnailUrl);
+
         await this.prisma.$transaction([
           ...uploadedMedia.map((media) =>
             this.prisma.media.update({
@@ -73,7 +102,7 @@ export class PostsStartupService implements OnModuleInit {
           this.prisma.post.update({
             where: { id: post.id },
             data: {
-              thumbnailUrl: uploadedMedia[0]?.imageUrl ?? post.thumbnailUrl,
+              thumbnailUrl,
             },
           }),
         ]);
