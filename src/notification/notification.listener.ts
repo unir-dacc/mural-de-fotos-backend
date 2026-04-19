@@ -3,7 +3,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { EmailService } from './email.service';
 import { PrismaService } from 'src/databases/prisma/prisma.service';
 import { PushService } from './push.service';
-import { Comment } from '@prisma/client';
+import { Comment, Post } from '@prisma/client';
 
 @Injectable()
 export class NotificationListener {
@@ -100,6 +100,36 @@ export class NotificationListener {
       payload.email,
       payload.resetPasswordCode,
     );
+  }
+
+  @OnEvent('post.created')
+  async notifyCreatedPost(payload: Post & { Media: { imageUrl: string }[] }) {
+    const usersWithTokens = await this.prisma.user.findMany({
+      where: { id: { not: payload.userId } },
+      include: { PushToken: true },
+    });
+
+    const recipients = usersWithTokens.filter((u) => u.PushToken.length > 0);
+
+    if (!recipients.length) return;
+
+    const author = await this.prisma.user.findUnique({
+      where: { id: payload.userId },
+    });
+
+    if (!author) return;
+
+    await this.expoPush.sendPostNotification(recipients, {
+      type: 'new_post',
+      postId: payload.id,
+      actorId: author.id,
+      actorName: author.name ?? 'Alguém',
+
+      title: 'Nova publicação',
+      body: `${author.name ?? 'Alguém'} publicou uma nova foto`,
+
+      imageUrl: payload.thumbnailUrl ?? payload.Media?.[0]?.imageUrl ?? undefined,
+    });
   }
 
   @OnEvent('face.detected')
