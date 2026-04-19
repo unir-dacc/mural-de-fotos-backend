@@ -60,6 +60,8 @@ export class PushService {
     const chunks = this.expo.chunkPushNotifications(messages);
     const invalidTokens: string[] = [];
 
+    this.logger.log(JSON.stringify(users));
+
     for (const chunk of chunks) {
       try {
         const receipts = await this.expo.sendPushNotificationsAsync(chunk);
