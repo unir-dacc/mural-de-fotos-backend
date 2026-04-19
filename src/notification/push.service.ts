@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Expo, ExpoPushMessage, ExpoPushToken } from 'expo-server-sdk';
+import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from 'src/databases/prisma/prisma.service';
 
@@ -7,7 +7,13 @@ export type PostNotificationType =
   | 'comment'
   | 'like'
   | 'face_detected'
-  | 'new_post';
+  | 'new_post'
+  | 'memory_reminder';
+
+export type StoryNotificationType =
+  | 'story_available'
+  | 'user_retrospective_story'
+  | 'global_retrospective_story';
 
 export type PostNotificationPayload = {
   type: PostNotificationType;
@@ -16,6 +22,16 @@ export type PostNotificationPayload = {
 
   actorId?: string;
   actorName?: string;
+
+  title: string;
+  body: string;
+
+  imageUrl?: string;
+};
+
+export type StoryNotificationPayload = {
+  type: StoryNotificationType;
+  storyId: string;
 
   title: string;
   body: string;
@@ -114,6 +130,24 @@ export class PushService {
         mediaId: payload.mediaId,
         actorId: payload.actorId,
         actorName: payload.actorName,
+        imageUrl: payload.imageUrl,
+      },
+      imageUrl: payload.imageUrl,
+    });
+  }
+
+  async sendStoryNotification(
+    users: Prisma.UserGetPayload<{ include: { PushToken: true } }>[],
+    payload: StoryNotificationPayload,
+  ) {
+    return this.sendPushToUsers(users, {
+      title: payload.title,
+      body: payload.body,
+      sound: 'default',
+      categoryId: 'default_notification',
+      data: {
+        type: payload.type,
+        storyId: payload.storyId,
         imageUrl: payload.imageUrl,
       },
       imageUrl: payload.imageUrl,
