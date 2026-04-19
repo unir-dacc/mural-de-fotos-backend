@@ -60,7 +60,12 @@ export class PushService {
     const chunks = this.expo.chunkPushNotifications(messages);
     const invalidTokens: string[] = [];
 
-    this.logger.log(JSON.stringify(users));
+    const names =
+      users.length > 0 ? users.map((u) => u.name).join(', ') : 'Nenhum usuário';
+
+    this.logger.log(
+      `Sending push notification ${message.data?.type}: ${names}`,
+    );
 
     for (const chunk of chunks) {
       try {
