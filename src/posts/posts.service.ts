@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { PrismaService } from 'src/databases/prisma/prisma.service';
 import { CreatePostDto, CreatePostSchema } from './dto/create-post.dto';
@@ -41,7 +42,6 @@ export class PostsService {
     const parsed = CreatePostSchema.parse(createPostDto);
 
     const uploads: UploadItem[] = [];
-    let thumbnailUploadPromise: Promise<{ url: string }> | null = null;
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -57,47 +57,20 @@ export class PostsService {
       }
 
       const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-      const fileExtension = file.originalname.split('.').pop();
-      const filename = `${uniqueSuffix}.${fileExtension}`;
+      const optimizedMedia = isVideo
+        ? await this.optimizeVideo(file.buffer)
+        : await this.optimizeImage(file.buffer);
+      const filename = isVideo
+        ? `${uniqueSuffix}.mp4`
+        : `${uniqueSuffix}.${optimizedMedia.extension}`;
       const folder = isVideo ? 'posts/videos' : 'posts/images';
 
       const uploadPromise = this.aws.uploadFile({
-        buffer: file.buffer,
+        buffer: optimizedMedia.buffer,
         fileName: filename,
-        mimeType: file.mimetype,
+        mimeType: optimizedMedia.mimeType,
         folder,
       });
-
-      // Gera thumbnail apenas do primeiro arquivo
-      if (i === 0) {
-        if (isImage) {
-          const thumbnailBuffer = await sharp(file.buffer)
-            .rotate()
-            .resize({
-              width: 400,
-              fit: 'inside',
-              position: 'centre',
-            })
-            .jpeg({ quality: 70 })
-            .toBuffer();
-
-          thumbnailUploadPromise = this.aws.uploadFile({
-            buffer: thumbnailBuffer,
-            fileName: `thumb_${uniqueSuffix}.jpg`,
-            mimeType: 'image/jpeg',
-            folder: 'posts/thumbnails',
-          });
-        } else if (isVideo) {
-          const thumbnailBuffer = await this.extractVideoThumbnail(file.buffer);
-
-          thumbnailUploadPromise = this.aws.uploadFile({
-            buffer: thumbnailBuffer,
-            fileName: `thumb_${uniqueSuffix}.jpg`,
-            mimeType: 'image/jpeg',
-            folder: 'posts/thumbnails',
-          });
-        }
-      }
 
       uploads.push({ isVideo, uploadPromise });
     }
@@ -106,16 +79,13 @@ export class PostsService {
       throw new BadRequestException('Nenhum arquivo válido foi enviado');
     }
 
-    const [originalResults, thumbnailResult] = await Promise.all([
-      Promise.all(uploads.map((u) => u.uploadPromise)),
-      thumbnailUploadPromise,
-    ]);
+    const originalResults = await Promise.all(uploads.map((u) => u.uploadPromise));
 
     const post = await this.prisma.post.create({
       data: {
         ...parsed,
         userId,
-        thumbnailUrl: thumbnailResult?.url ?? null,
+        thumbnailUrl: originalResults[0]?.url ?? null,
         Media: {
           create: originalResults.map((result, index) => ({
             imageUrl: result.url,
@@ -135,6 +105,20 @@ export class PostsService {
     });
 
     return post;
+  }
+
+  async optimizeMediaFromUrl(mediaUrl: string, isVideo: boolean) {
+    const response = await fetch(mediaUrl);
+
+    if (!response.ok) {
+      throw new InternalServerErrorException(
+        `Falha ao baixar a mídia para otimização: ${mediaUrl}`,
+      );
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+
+    return isVideo ? this.optimizeVideo(buffer) : this.optimizeImage(buffer);
   }
 
   async generateThumbnailFromUrl(
@@ -194,6 +178,65 @@ export class PostsService {
         .resize({ width: 400, withoutEnlargement: true })
         .jpeg({ quality: 70 })
         .toBuffer();
+    } finally {
+      if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
+      if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+    }
+  }
+
+  private async optimizeImage(
+    imageBuffer: Buffer,
+  ): Promise<{ buffer: Buffer; mimeType: string; extension: string }> {
+    const optimizedBuffer = await sharp(imageBuffer)
+      .rotate()
+      .resize({
+        width: 1600,
+        height: 1600,
+        fit: 'inside',
+        withoutEnlargement: true,
+      })
+      .jpeg({ quality: 72, mozjpeg: true })
+      .toBuffer();
+
+    return {
+      buffer: optimizedBuffer,
+      mimeType: 'image/jpeg',
+      extension: 'jpg',
+    };
+  }
+
+  private async optimizeVideo(
+    videoBuffer: Buffer,
+  ): Promise<{ buffer: Buffer; mimeType: string; extension: string }> {
+    const tmpDir = os.tmpdir();
+    const uniqueId = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    const inputPath = path.join(tmpDir, `video_input_${uniqueId}.mp4`);
+    const outputPath = path.join(tmpDir, `video_output_${uniqueId}.mp4`);
+
+    try {
+      fs.writeFileSync(inputPath, videoBuffer);
+
+      await new Promise<void>((resolve, reject) => {
+        ffmpeg(inputPath)
+          .videoCodec('libx264')
+          .audioCodec('aac')
+          .outputOptions([
+            '-preset veryfast',
+            '-crf 30',
+            '-movflags +faststart',
+            '-vf scale=\'min(1280,iw)\':-2',
+          ])
+          .format('mp4')
+          .save(outputPath)
+          .on('end', () => resolve())
+          .on('error', reject);
+      });
+
+      return {
+        buffer: fs.readFileSync(outputPath),
+        mimeType: 'video/mp4',
+        extension: 'mp4',
+      };
     } finally {
       if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
       if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
