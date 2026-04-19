@@ -54,6 +54,7 @@ export class PushService {
       data: message.data,
       mutableContent: true,
       attachments: message.imageUrl ? [{ url: message.imageUrl }] : undefined,
+      image: message.imageUrl,
     }));
 
     const chunks = this.expo.chunkPushNotifications(messages);
