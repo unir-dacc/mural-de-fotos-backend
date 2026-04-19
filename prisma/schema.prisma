@@ -28,6 +28,7 @@ model User {
   entity        Entity[]
   EntityCluster EntityCluster[]
   PushToken     PushToken[]
+  stories       Story[]
 
   @@index([name])
   @@index([createdAt])
@@ -70,6 +71,7 @@ model Post {
   comments Comment[]
   likes    Like[]
   Media    Media[]
+  storyItems StoryItem[]
 
   @@index([userId])
   @@index([createdAt])
@@ -91,6 +93,7 @@ model Media {
   postId   String
   post     Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
   entities Entity[]
+  storyItems StoryItem[]
 
   @@index([postId])
   @@index([order])
@@ -185,4 +188,65 @@ model Like {
   @@unique([userId, postId], name: "userId_postId")
   @@index([postId])
   @@index([userId])
+}
+
+enum StoryType {
+  USER_QUARTERLY_RETROSPECTIVE
+  USER_YEARLY_RETROSPECTIVE
+  GLOBAL_YEARLY_RETROSPECTIVE
+}
+
+enum StoryVisibility {
+  USER_ONLY
+  GLOBAL
+}
+
+model Story {
+  id String @id @default(uuid())
+
+  title    String
+  subtitle String?
+
+  type       StoryType
+  visibility StoryVisibility
+
+  periodStart DateTime
+  periodEnd   DateTime
+  expiresAt   DateTime
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  items StoryItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, expiresAt])
+  @@index([visibility, expiresAt])
+  @@unique([type, userId, periodStart, periodEnd])
+}
+
+model StoryItem {
+  id String @id @default(uuid())
+
+  order Int
+
+  storyId String
+  story   Story   @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  postId String
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  mediaId String
+  media   Media   @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([storyId, order])
+  @@unique([storyId, mediaId])
+  @@index([storyId, order])
+  @@index([postId])
+  @@index([mediaId])
 }

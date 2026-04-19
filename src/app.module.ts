@@ -28,6 +28,8 @@ import {
   ZodSerializationException,
 } from 'nestjs-zod';
 import { LabelingModule } from 'src/labeling/label.module';
+import { StoriesModule } from './stories/stories.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Catch(HttpException)
 class HttpExceptionFilter extends BaseExceptionFilter {
@@ -49,6 +51,7 @@ class HttpExceptionFilter extends BaseExceptionFilter {
 @Module({
   imports: [
     ConfigModule.forRoot(),
+    ScheduleModule.forRoot(),
     PrismaModule,
     AuthModule,
     UsersModule,
@@ -57,6 +60,7 @@ class HttpExceptionFilter extends BaseExceptionFilter {
     CommentsModule,
     AwsUploadModule,
     LabelingModule,
+    StoriesModule,
   ],
   controllers: [],
   providers: [

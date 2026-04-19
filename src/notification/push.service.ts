@@ -10,6 +10,11 @@ export type PostNotificationType =
   | 'new_post'
   | 'memory_reminder';
 
+export type StoryNotificationType =
+  | 'story_available'
+  | 'user_retrospective_story'
+  | 'global_retrospective_story';
+
 export type PostNotificationPayload = {
   type: PostNotificationType;
   postId: string;
@@ -17,6 +22,16 @@ export type PostNotificationPayload = {
 
   actorId?: string;
   actorName?: string;
+
+  title: string;
+  body: string;
+
+  imageUrl?: string;
+};
+
+export type StoryNotificationPayload = {
+  type: StoryNotificationType;
+  storyId: string;
 
   title: string;
   body: string;
@@ -115,6 +130,24 @@ export class PushService {
         mediaId: payload.mediaId,
         actorId: payload.actorId,
         actorName: payload.actorName,
+        imageUrl: payload.imageUrl,
+      },
+      imageUrl: payload.imageUrl,
+    });
+  }
+
+  async sendStoryNotification(
+    users: Prisma.UserGetPayload<{ include: { PushToken: true } }>[],
+    payload: StoryNotificationPayload,
+  ) {
+    return this.sendPushToUsers(users, {
+      title: payload.title,
+      body: payload.body,
+      sound: 'default',
+      categoryId: 'default_notification',
+      data: {
+        type: payload.type,
+        storyId: payload.storyId,
         imageUrl: payload.imageUrl,
       },
       imageUrl: payload.imageUrl,
