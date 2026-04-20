@@ -52,56 +52,72 @@ export class PushService {
     users: Prisma.UserGetPayload<{ include: { PushToken: true } }>[],
     message: InternalPushMessage,
   ) {
-    const tokens = users
-      .flatMap((u) => u.PushToken || [])
-      .filter((t) => Expo.isExpoPushToken(t.token));
+    const usersWithValidTokens = users
+      .map((user) => ({
+        ...user,
+        PushToken: (user.PushToken || []).filter((token) =>
+          Expo.isExpoPushToken(token.token),
+        ),
+      }))
+      .filter((user) => user.PushToken.length > 0);
 
-    if (!tokens.length) {
+    if (!usersWithValidTokens.length) {
       this.logger.debug('Nenhum token válido encontrado.');
       return;
     }
-
-    const messages: ExpoPushMessage[] = tokens.map((t) => ({
-      to: t.token,
-      title: message.title,
-      body: message.body,
-      sound: message.sound,
-      categoryId: message.categoryId,
-      data: message.data,
-      mutableContent: true,
-      attachments: message.imageUrl ? [{ url: message.imageUrl }] : undefined,
-      image: message.imageUrl,
-    }));
-
-    const chunks = this.expo.chunkPushNotifications(messages);
     const invalidTokens: string[] = [];
 
     const names =
-      users.length > 0 ? users.map((u) => u.name).join(', ') : 'Nenhum usuário';
+      usersWithValidTokens.length > 0
+        ? usersWithValidTokens.map((u) => u.name).join(', ')
+        : 'Nenhum usuário';
 
     this.logger.log(
-      `Sending push notification ${message.data?.type}: ${names}`,
+      `Sending push notification ${message.data?.type} ${JSON.stringify(message)} to: ${names}`,
     );
 
-    for (const chunk of chunks) {
-      try {
-        const receipts = await this.expo.sendPushNotificationsAsync(chunk);
+    for (const user of usersWithValidTokens) {
+      let delivered = false;
 
-        receipts.forEach((receipt, index) => {
-          if (receipt.status === 'error') {
-            const error = receipt.details?.error;
+      for (const pushToken of user.PushToken) {
+        const expoMessage = {
+          to: pushToken.token,
+          title: message.title,
+          body: message.body,
+          sound: message.sound,
+          categoryId: message.categoryId,
+          data: message.data,
+          mutableContent: true,
+          image: message.imageUrl,
+        };
 
-            if (error === 'DeviceNotRegistered') {
-              invalidTokens.push(chunk[index].to as string);
-            }
+        try {
+          const [receipt] =
+            await this.expo.sendPushNotificationsAsync([
+              expoMessage as ExpoPushMessage,
+            ]);
 
-            this.logger.warn(
-              `Push error: ${error} - token: ${chunk[index].to}`,
-            );
+          if (receipt?.status === 'ok') {
+            delivered = true;
+            break;
           }
-        });
-      } catch (err) {
-        this.logger.error('Erro ao enviar push:', err);
+
+          const error = receipt?.details?.error;
+
+          if (error === 'DeviceNotRegistered') {
+            invalidTokens.push(pushToken.token);
+          }
+
+          this.logger.warn(`Push error: ${error} - token: ${pushToken.token}`);
+        } catch (err) {
+          this.logger.error('Erro ao enviar push:', err);
+        }
+      }
+
+      if (!delivered) {
+        this.logger.warn(
+          `Nenhum token do usuário ${user.id} recebeu o push com sucesso.`,
+        );
       }
     }
 
