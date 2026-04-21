@@ -93,7 +93,9 @@ export class PostsService {
       throw new BadRequestException('Nenhum arquivo válido foi enviado');
     }
 
-    const originalResults = await Promise.all(uploads.map((u) => u.uploadPromise));
+    const originalResults = await Promise.all(
+      uploads.map((u) => u.uploadPromise),
+    );
 
     const post = await this.prisma.post.create({
       data: {
@@ -149,7 +151,10 @@ export class PostsService {
 
     const buffer = Buffer.from(await response.arrayBuffer());
 
-    return this.uploadThumbnailFromVideoBuffer(buffer, `${Date.now()}-${postId}`);
+    return this.uploadThumbnailFromVideoBuffer(
+      buffer,
+      `${Date.now()}-${postId}`,
+    );
   }
 
   async generateThumbnailFromUrl(
@@ -221,12 +226,10 @@ export class PostsService {
     const optimizedBuffer = await sharp(imageBuffer)
       .rotate()
       .resize({
-        width: 1600,
-        height: 1600,
         fit: 'inside',
         withoutEnlargement: true,
       })
-      .jpeg({ quality: 72, mozjpeg: true })
+      .jpeg({ quality: 85, mozjpeg: true })
       .toBuffer();
 
     return {
@@ -251,11 +254,14 @@ export class PostsService {
         ffmpeg(inputPath)
           .videoCodec('libx264')
           .audioCodec('aac')
+          .audioBitrate('128k') // Garante que o áudio não roube muito espaço
           .outputOptions([
-            '-preset veryfast',
-            '-crf 30',
-            '-movflags +faststart',
-            '-vf scale=\'min(1280,iw)\':-2',
+            '-preset faster', // Melhor compressão que o 'veryfast'
+            '-crf 23', // Qualidade visual excelente
+            '-maxrate 2M', // Teto de bitrate para não explodir o tamanho
+            '-bufsize 4M', // Buffer para controle do maxrate
+            '-pix_fmt yuv420p', // Garante compatibilidade em qualquer player
+            '-vf scale=1080:-2', // Sobe de 720p para 1080p (Full HD)
           ])
           .format('mp4')
           .save(outputPath)
