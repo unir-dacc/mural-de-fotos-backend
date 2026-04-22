@@ -11,6 +11,7 @@ import { createPaginator } from 'prisma-pagination';
 import { Prisma, Post } from '@prisma/client';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AwsUploadService } from 'src/aws/aws.service';
+import { buildSearchWhere } from './build-search-where';
 import * as sharp from 'sharp';
 import * as ffmpeg from 'fluent-ffmpeg';
 import * as fs from 'fs';
@@ -424,83 +425,4 @@ export class PostsService {
       },
     });
   }
-}
-
-function buildSearchWhere(raw: string): Prisma.PostWhereInput {
-  const term = raw.trim();
-  if (!term) return {};
-
-  const tokens = term.split(/\s+/);
-
-  const tokenConditions: Prisma.PostWhereInput[] = tokens.map((token) => ({
-    OR: [
-      {
-        caption: {
-          contains: token,
-          mode: 'insensitive',
-        },
-      },
-
-      {
-        user: {
-          name: {
-            contains: token,
-            mode: 'insensitive',
-          },
-        },
-      },
-      {
-        Media: {
-          some: {
-            entities: {
-              some: {
-                name: {
-                  contains: token,
-                  mode: 'insensitive',
-                },
-              },
-            },
-          },
-        },
-      },
-      {
-        Media: {
-          some: {
-            entities: {
-              some: {
-                className: {
-                  contains: token,
-                  mode: 'insensitive',
-                },
-              },
-            },
-          },
-        },
-      },
-      {
-        Media: {
-          some: {
-            entities: {
-              some: {
-                EntityCluster: {
-                  OR: [
-                    {
-                      name: {
-                        contains: token,
-                        mode: 'insensitive',
-                      },
-                    },
-                  ],
-                },
-              },
-            },
-          },
-        },
-      },
-    ],
-  }));
-
-  return {
-    AND: tokenConditions,
-  };
 }
