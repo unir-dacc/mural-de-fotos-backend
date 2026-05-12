@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from 'src/databases/prisma/prisma.service';
 import { CreatePostDto, CreatePostSchema } from './dto/create-post.dto';
-import { UpdatePostDto } from './dto/update-post.dto';
+import { UpdatePostDto, UpdatePostSchema } from './dto/update-post.dto';
 import { createPaginator } from 'prisma-pagination';
 import { Prisma, Post } from '@prisma/client';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -29,6 +29,12 @@ interface OptimizedMediaResult {
   extension: string;
 }
 
+const taggedUsersSelect = {
+  id: true,
+  name: true,
+  avatarUrl: true,
+} satisfies Prisma.UserSelect;
+
 @Injectable()
 export class PostsService {
   constructor(
@@ -46,7 +52,7 @@ export class PostsService {
       throw new BadRequestException('Envie pelo menos um arquivo válido');
     }
 
-    const parsed = CreatePostSchema.parse(createPostDto);
+    const { taggedUserIds, ...parsed } = CreatePostSchema.parse(createPostDto);
 
     const uploads: UploadItem[] = [];
     let thumbnailUrl: string | null = null;
@@ -110,9 +116,17 @@ export class PostsService {
             order: index + 1,
           })),
         },
+        taggedUsers: taggedUserIds?.length
+          ? {
+              connect: taggedUserIds.map((id) => ({ id })),
+            }
+          : undefined,
       },
       include: {
         Media: true,
+        taggedUsers: {
+          select: taggedUsersSelect,
+        },
       },
     });
 
@@ -120,6 +134,15 @@ export class PostsService {
       ...post,
       caption: createPostDto.caption,
     });
+
+    if (taggedUserIds?.length) {
+      this.eventEmitter.emit('post.users_tagged', {
+        postId: post.id,
+        authorId: userId,
+        taggedUserIds,
+        thumbnailUrl: post.thumbnailUrl,
+      });
+    }
 
     return post;
   }
@@ -309,6 +332,9 @@ export class PostsService {
             name: true,
           },
         },
+        taggedUsers: {
+          select: taggedUsersSelect,
+        },
         comments: {
           include: {
             user: {},
@@ -383,6 +409,9 @@ export class PostsService {
               name: true,
             },
           },
+          taggedUsers: {
+            select: taggedUsersSelect,
+          },
           _count: {
             select: {
               likes: true,
@@ -399,10 +428,24 @@ export class PostsService {
   }
 
   async updatePost(id: string, updatePostDto: UpdatePostDto) {
+    const { taggedUserIds, imageUrl: _imageUrl, ...data } =
+      UpdatePostSchema.parse(updatePostDto);
+
     const post = await this.prisma.post.update({
       where: { id },
       data: {
-        ...updatePostDto,
+        ...data,
+        taggedUsers: taggedUserIds
+          ? {
+              set: taggedUserIds.map((userId) => ({ id: userId })),
+            }
+          : undefined,
+      },
+      include: {
+        Media: true,
+        taggedUsers: {
+          select: taggedUsersSelect,
+        },
       },
     });
     return post;

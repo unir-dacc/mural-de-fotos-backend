@@ -134,6 +134,48 @@ export class NotificationListener {
     });
   }
 
+  @OnEvent('post.users_tagged')
+  async handlePostUsersTaggedEvent(payload: {
+    postId: string;
+    authorId: string;
+    taggedUserIds: string[];
+    thumbnailUrl?: string | null;
+  }) {
+    const taggedUserIds = [...new Set(payload.taggedUserIds)].filter(
+      (userId) => userId !== payload.authorId,
+    );
+
+    if (!taggedUserIds.length) return;
+
+    const [author, recipients] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: payload.authorId },
+      }),
+      this.prisma.user.findMany({
+        where: { id: { in: taggedUserIds } },
+        include: { PushToken: true },
+      }),
+    ]);
+
+    if (!author) return;
+
+    const usersWithTokens = recipients.filter(
+      (user) => user.PushToken.length > 0,
+    );
+
+    if (!usersWithTokens.length) return;
+
+    await this.expoPush.sendPostNotification(usersWithTokens, {
+      type: 'user_tagged',
+      postId: payload.postId,
+      actorId: author.id,
+      actorName: author.name ?? 'Alguém',
+      title: 'Você foi marcado em uma foto',
+      body: `${author.name ?? 'Alguém'} marcou você em uma foto`,
+      imageUrl: payload.thumbnailUrl ?? undefined,
+    });
+  }
+
   @OnEvent('face.detected')
   async handleFaceDetected(payload: any) {
     const targetUser = await this.prisma.user.findUnique({

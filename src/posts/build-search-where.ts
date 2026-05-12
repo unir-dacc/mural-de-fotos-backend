@@ -23,6 +23,16 @@ export function buildSearchWhere(raw: string): Prisma.PostWhereInput {
         },
       },
       {
+        taggedUsers: {
+          some: {
+            name: {
+              contains: token,
+              mode: 'insensitive',
+            },
+          },
+        },
+      },
+      {
         Media: {
           some: {
             entities: {

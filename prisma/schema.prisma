@@ -23,6 +23,7 @@ model User {
   resetPasswordCodeExpiry DateTime?
 
   posts         Post[]
+  taggedInPosts Post[]          @relation("PostTaggedUsers")
   comments      Comment[]
   likes         Like[]
   entity        Entity[]
@@ -71,6 +72,7 @@ model Post {
   comments Comment[]
   likes    Like[]
   Media    Media[]
+  taggedUsers User[]      @relation("PostTaggedUsers")
   storyItems StoryItem[]
 
   @@index([userId])

@@ -53,6 +53,10 @@ export class PostsController {
       properties: {
         caption: { type: 'string' },
         public: { type: 'boolean' },
+        taggedUserIds: {
+          type: 'array',
+          items: { type: 'string', format: 'uuid' },
+        },
         media: {
           type: 'array',
           items: { type: 'string', format: 'binary' },

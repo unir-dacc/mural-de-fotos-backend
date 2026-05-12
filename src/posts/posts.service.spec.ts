@@ -25,6 +25,16 @@ describe('buildSearchWhere', () => {
               },
             },
             {
+              taggedUsers: {
+                some: {
+                  name: {
+                    contains: 'rodrigo',
+                    mode: 'insensitive',
+                  },
+                },
+              },
+            },
+            {
               Media: {
                 some: {
                   entities: {

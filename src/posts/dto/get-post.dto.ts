@@ -4,6 +4,12 @@ import { MediaSchema } from './media.dto';
 import { PaginatedOutputSchema } from 'src/common/dtos/pagination.dto';
 import { GetUserSchema } from 'src/users/dto/get-user.dto';
 
+const PublicTaggedUserSchema = z.object({
+  id: z.uuid().describe('Identificador único do usuário marcado'),
+  name: z.string().describe('Nome do usuário marcado'),
+  avatarUrl: z.url().nullable().describe('Avatar do usuário marcado'),
+});
+
 export const GetPostSchema = z.object({
   id: z.uuid().describe('Identificador único do post'),
   caption: z.string().describe('Legenda do post'),
@@ -23,6 +29,10 @@ export const GetPostSchema = z.object({
     Media: z.number(),
   }),
   user: GetUserSchema,
+  taggedUsers: z
+    .array(PublicTaggedUserSchema)
+    .default([])
+    .describe('Usuários marcados no post'),
 });
 
 export class GetPostDto extends createZodDto(GetPostSchema) {}

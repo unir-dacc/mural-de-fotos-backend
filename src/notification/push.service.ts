@@ -8,7 +8,8 @@ export type PostNotificationType =
   | 'like'
   | 'face_detected'
   | 'new_post'
-  | 'memory_reminder';
+  | 'memory_reminder'
+  | 'user_tagged';
 
 export type StoryNotificationType =
   | 'story_available'
