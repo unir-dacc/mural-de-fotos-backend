@@ -86,7 +86,11 @@ export class PushService {
           categoryId: message.categoryId,
           data: message.data,
           mutableContent: true,
-          image: message.imageUrl,
+          richContent: message.imageUrl
+            ? {
+                image: message.imageUrl,
+              }
+            : undefined,
         });
       }
     }
