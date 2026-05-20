@@ -1,6 +1,12 @@
 import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { Prisma, StoryType, StoryVisibility } from '@prisma/client';
+import {
+  Prisma,
+  PrismaClientKnownRequestError,
+  StoryType,
+  StoryVisibility,
+} from '@prisma/client';
+
 import { PrismaService } from 'src/databases/prisma/prisma.service';
 import { PushService } from 'src/notification/push.service';
 
@@ -39,7 +45,7 @@ export class StoriesService implements OnModuleInit {
   }
 
   @Cron('0 11 * * *', {
-    name: 'stories-generation-and-cleanup',
+    name: 'stories-generation',
     timeZone: 'America/Porto_Velho',
   })
   async handleStoriesCron() {
@@ -47,7 +53,6 @@ export class StoriesService implements OnModuleInit {
   }
 
   private async runStoriesGeneration(referenceDate = new Date()) {
-    await this.deleteExpiredStories();
     await this.generateQuarterlyRetrospectives(referenceDate);
     await this.generateYearlyRetrospectives(referenceDate);
     await this.generateGlobalYearlyRetrospective(referenceDate);
@@ -120,22 +125,18 @@ export class StoriesService implements OnModuleInit {
     return this.mapStory(story);
   }
 
-  async deleteExpiredStories(now = new Date()) {
-    await this.prisma.story.deleteMany({
-      where: {
-        expiresAt: {
-          lte: now,
-        },
-      },
-    });
-  }
-
   private async generateQuarterlyRetrospectives(referenceDate: Date) {
     const period = this.getPreviousQuarterPeriod(referenceDate);
-    if (!this.hasReachedDate(referenceDate, period.end)) return;
+
+    if (!this.hasReachedDate(referenceDate, period.end)) {
+      return;
+    }
 
     const users = await this.prisma.user.findMany({
-      select: { id: true, name: true },
+      select: {
+        id: true,
+        name: true,
+      },
     });
 
     for (const user of users) {
@@ -145,7 +146,9 @@ export class StoriesService implements OnModuleInit {
         period.end,
       );
 
-      if (!mediaCandidates.length) continue;
+      if (!mediaCandidates.length) {
+        continue;
+      }
 
       await this.createStoryIfNotExists({
         type: 'USER_QUARTERLY_RETROSPECTIVE',
@@ -162,10 +165,16 @@ export class StoriesService implements OnModuleInit {
 
   private async generateYearlyRetrospectives(referenceDate: Date) {
     const period = this.getLatestAvailableYearlyPeriod(referenceDate);
-    if (!period) return;
+
+    if (!period) {
+      return;
+    }
 
     const users = await this.prisma.user.findMany({
-      select: { id: true, name: true },
+      select: {
+        id: true,
+        name: true,
+      },
     });
 
     for (const user of users) {
@@ -175,7 +184,9 @@ export class StoriesService implements OnModuleInit {
         period.end,
       );
 
-      if (!mediaCandidates.length) continue;
+      if (!mediaCandidates.length) {
+        continue;
+      }
 
       await this.createStoryIfNotExists({
         type: 'USER_YEARLY_RETROSPECTIVE',
@@ -192,15 +203,22 @@ export class StoriesService implements OnModuleInit {
 
   private async generateGlobalYearlyRetrospective(referenceDate: Date) {
     const period = this.getLatestAvailableYearlyPeriod(referenceDate);
-    if (!period) return;
+
+    if (!period) {
+      return;
+    }
 
     const topPosts = await this.findTopGlobalPosts(period.start, period.end);
 
-    if (!topPosts.length) return;
+    if (!topPosts.length) {
+      return;
+    }
 
     const mediaCandidates = await this.mapGlobalPostsToMedia(topPosts);
 
-    if (!mediaCandidates.length) return;
+    if (!mediaCandidates.length) {
+      return;
+    }
 
     await this.createStoryIfNotExists({
       type: 'GLOBAL_YEARLY_RETROSPECTIVE',
@@ -224,45 +242,44 @@ export class StoriesService implements OnModuleInit {
     periodEnd: Date;
     mediaCandidates: UserMediaCandidate[];
   }) {
-    const existing = await this.prisma.story.findFirst({
-      where: {
-        type: params.type,
-        userId: params.userId,
-        periodStart: params.periodStart,
-        periodEnd: params.periodEnd,
-      },
-      select: { id: true },
-    });
-
-    if (existing) return;
-
     const uniqueMedia = Array.from(
       new Map(
         params.mediaCandidates.map((item) => [item.mediaId, item]),
       ).values(),
     );
 
-    const story = await this.prisma.story.create({
-      data: {
-        title: params.title,
-        subtitle: params.subtitle,
-        type: params.type,
-        visibility: params.visibility,
-        userId: params.userId,
-        periodStart: params.periodStart,
-        periodEnd: params.periodEnd,
-        expiresAt: this.addDays(new Date(), 14),
-        items: {
-          create: uniqueMedia.map((item, index) => ({
-            order: index + 1,
-            postId: item.postId,
-            mediaId: item.mediaId,
-          })),
+    try {
+      const story = await this.prisma.story.create({
+        data: {
+          title: params.title,
+          subtitle: params.subtitle,
+          type: params.type,
+          visibility: params.visibility,
+          userId: params.userId,
+          periodStart: params.periodStart,
+          periodEnd: params.periodEnd,
+          expiresAt: this.addDays(new Date(), 14),
+          items: {
+            create: uniqueMedia.map((item, index) => ({
+              order: index + 1,
+              postId: item.postId,
+              mediaId: item.mediaId,
+            })),
+          },
         },
-      },
-    });
+      });
 
-    await this.notifyStoryCreated(story.id);
+      await this.notifyStoryCreated(story.id);
+    } catch (error) {
+      if (
+        error instanceof PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        return;
+      }
+
+      throw error;
+    }
   }
 
   private async findUserRetrospectiveMedia(
@@ -345,7 +362,14 @@ export class StoriesService implements OnModuleInit {
         },
         isVideo: false,
       },
-      orderBy: [{ postId: 'asc' }, { order: 'asc' }],
+      orderBy: [
+        {
+          postId: 'asc',
+        },
+        {
+          order: 'asc',
+        },
+      ],
       select: {
         id: true,
         postId: true,
@@ -357,11 +381,13 @@ export class StoriesService implements OnModuleInit {
 
     for (const media of medias) {
       const items = mediasByPost.get(media.postId) ?? [];
+
       items.push({
         mediaId: media.id,
         postId: media.postId,
         createdAt: media.createdAt,
       });
+
       mediasByPost.set(media.postId, items);
     }
 
@@ -382,6 +408,7 @@ export class StoriesService implements OnModuleInit {
       createdAt: story.createdAt.toISOString(),
       updatedAt: story.updatedAt.toISOString(),
       coverImageUrl: story.items[0]?.media.imageUrl ?? null,
+
       items: story.items.map((item) => ({
         id: item.id,
         order: item.order,
@@ -399,22 +426,33 @@ export class StoriesService implements OnModuleInit {
   private getPreviousQuarterPeriod(referenceDate: Date) {
     const year = referenceDate.getFullYear();
     const month = referenceDate.getMonth();
+
     const currentQuarterStartMonth = Math.floor(month / 3) * 3;
+
     const start = new Date(year, currentQuarterStartMonth - 3, 1, 0, 0, 0, 0);
+
     const end = new Date(year, currentQuarterStartMonth, 1, 0, 0, 0, 0);
 
-    return { start, end };
+    return {
+      start,
+      end,
+    };
   }
 
   private getYearRetrospectivePeriod(year: number) {
     const start = new Date(year, 0, 1, 0, 0, 0, 0);
+
     const end = this.getFirstBusinessDayOfDecember(year);
 
-    return { start, end };
+    return {
+      start,
+      end,
+    };
   }
 
   private formatPeriodLabel(periodStart: Date, periodEnd: Date) {
     const start = periodStart.toLocaleDateString('pt-BR');
+
     const end = new Date(periodEnd.getTime() - 1).toLocaleDateString('pt-BR');
 
     return `${start} - ${end}`;
@@ -422,12 +460,15 @@ export class StoriesService implements OnModuleInit {
 
   private addDays(date: Date, days: number) {
     const result = new Date(date);
+
     result.setDate(result.getDate() + days);
+
     return result;
   }
 
   private getLatestAvailableYearlyPeriod(referenceDate: Date) {
     const currentYear = referenceDate.getFullYear();
+
     const currentYearGenerationDate =
       this.getFirstBusinessDayOfDecember(currentYear);
 
@@ -436,6 +477,7 @@ export class StoriesService implements OnModuleInit {
     }
 
     const previousYear = currentYear - 1;
+
     const previousYearGenerationDate =
       this.getFirstBusinessDayOfDecember(previousYear);
 
@@ -448,6 +490,7 @@ export class StoriesService implements OnModuleInit {
 
   private hasReachedDate(referenceDate: Date, targetDate: Date) {
     const current = this.startOfDay(referenceDate).getTime();
+
     const target = this.startOfDay(targetDate).getTime();
 
     return current >= target;
@@ -455,7 +498,9 @@ export class StoriesService implements OnModuleInit {
 
   private startOfDay(date: Date) {
     const normalized = new Date(date);
+
     normalized.setHours(0, 0, 0, 0);
+
     return normalized;
   }
 
@@ -474,6 +519,7 @@ export class StoriesService implements OnModuleInit {
 
     for (let index = copy.length - 1; index > 0; index--) {
       const randomIndex = Math.floor(Math.random() * (index + 1));
+
       [copy[index], copy[randomIndex]] = [copy[randomIndex], copy[index]];
     }
 
@@ -482,7 +528,9 @@ export class StoriesService implements OnModuleInit {
 
   private async notifyStoryCreated(storyId: string) {
     const story = await this.prisma.story.findUnique({
-      where: { id: storyId },
+      where: {
+        id: storyId,
+      },
       include: {
         user: {
           include: {
@@ -501,7 +549,9 @@ export class StoriesService implements OnModuleInit {
       },
     });
 
-    if (!story) return;
+    if (!story) {
+      return;
+    }
 
     const imageUrl = story.items[0]?.media.imageUrl ?? undefined;
 
@@ -514,7 +564,9 @@ export class StoriesService implements OnModuleInit {
 
       const recipients = users.filter((user) => user.PushToken.length > 0);
 
-      if (!recipients.length) return;
+      if (!recipients.length) {
+        return;
+      }
 
       await this.pushService.sendStoryNotification(recipients, {
         type: 'global_retrospective_story',
@@ -527,7 +579,9 @@ export class StoriesService implements OnModuleInit {
       return;
     }
 
-    if (!story.user || story.user.PushToken.length === 0) return;
+    if (!story.user || story.user.PushToken.length === 0) {
+      return;
+    }
 
     await this.pushService.sendStoryNotification([story.user], {
       type: 'user_retrospective_story',
