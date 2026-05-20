@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Expo, ExpoPushMessage } from 'expo-server-sdk';
+import { Expo, ExpoPushMessage, ExpoPushTicket } from 'expo-server-sdk';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from 'src/databases/prisma/prisma.service';
 
@@ -39,7 +39,9 @@ export type StoryNotificationPayload = {
   imageUrl?: string;
 };
 
-type InternalPushMessage = Omit<ExpoPushMessage, 'to'> & { imageUrl?: string };
+type InternalPushMessage = Omit<ExpoPushMessage, 'to'> & {
+  imageUrl?: string;
+};
 
 @Injectable()
 export class PushService {
@@ -65,22 +67,18 @@ export class PushService {
       this.logger.debug('Nenhum token válido encontrado.');
       return;
     }
-    const invalidTokens: string[] = [];
 
-    const names =
-      usersWithValidTokens.length > 0
-        ? usersWithValidTokens.map((u) => u.name).join(', ')
-        : 'Nenhum usuário';
+    const names = usersWithValidTokens.map((u) => u.name).join(', ');
 
     this.logger.log(
-      `Sending push notification ${message.data?.type} ${JSON.stringify(message)} to: ${names}`,
+      `Sending push notification ${message.data?.type} to: ${names}`,
     );
 
-    for (const user of usersWithValidTokens) {
-      let delivered = false;
+    const messages: ExpoPushMessage[] = [];
 
+    for (const user of usersWithValidTokens) {
       for (const pushToken of user.PushToken) {
-        const expoMessage = {
+        messages.push({
           to: pushToken.token,
           title: message.title,
           body: message.body,
@@ -89,43 +87,109 @@ export class PushService {
           data: message.data,
           mutableContent: true,
           image: message.imageUrl,
-        };
+        });
+      }
+    }
 
-        try {
-          const [receipt] =
-            await this.expo.sendPushNotificationsAsync([
-              expoMessage as ExpoPushMessage,
-            ]);
+    const chunks = this.expo.chunkPushNotifications(messages);
 
-          if (receipt?.status === 'ok') {
-            delivered = true;
-            break;
+    const ticketIds: string[] = [];
+    const invalidTokens: string[] = [];
+
+    for (const chunk of chunks) {
+      try {
+        const tickets = await this.expo.sendPushNotificationsAsync(chunk);
+
+        for (let i = 0; i < tickets.length; i++) {
+          const ticket: ExpoPushTicket = tickets[i];
+          const message = chunk[i];
+
+          if (ticket.status === 'ok') {
+            if (ticket.id) {
+              ticketIds.push(ticket.id);
+            }
+
+            continue;
           }
 
-          const error = receipt?.details?.error;
+          const error = ticket.details?.error;
+
+          this.logger.warn(
+            `Push ticket error: ${error} - token: ${message.to}`,
+          );
 
           if (error === 'DeviceNotRegistered') {
-            invalidTokens.push(pushToken.token);
+            invalidTokens.push(message.to as string);
+          }
+        }
+      } catch (error) {
+        this.logger.error('Erro ao enviar chunk de notificações', error);
+      }
+    }
+
+    if (invalidTokens.length > 0) {
+      await this.removeInvalidTokens(invalidTokens);
+    }
+
+    if (ticketIds.length > 0) {
+      // Processa receipts em background
+      setTimeout(() => {
+        this.processReceipts(ticketIds).catch((err) => {
+          this.logger.error('Erro ao processar receipts', err);
+        });
+      }, 30000);
+    }
+  }
+
+  private async processReceipts(ticketIds: string[]) {
+    const receiptChunks = this.expo.chunkPushNotificationReceiptIds(ticketIds);
+
+    const invalidTokens: string[] = [];
+
+    for (const chunk of receiptChunks) {
+      try {
+        const receipts =
+          await this.expo.getPushNotificationReceiptsAsync(chunk);
+
+        for (const receiptId in receipts) {
+          const receipt = receipts[receiptId];
+
+          if (receipt.status === 'ok') {
+            continue;
           }
 
-          this.logger.warn(`Push error: ${error} - token: ${pushToken.token}`);
-        } catch (err) {
-          this.logger.error('Erro ao enviar push:', err);
+          const error = receipt.details?.error;
+
+          this.logger.warn(`Push receipt error: ${error}`);
+
+          if (error === 'DeviceNotRegistered') {
+            this.logger.warn(
+              `Dispositivo não registrado detectado via receipt`,
+            );
+          }
         }
-      }
-
-      if (!delivered) {
-        this.logger.warn(
-          `Nenhum token do usuário ${user.id} recebeu o push com sucesso.`,
-        );
+      } catch (error) {
+        this.logger.error('Erro ao buscar receipts do Expo', error);
       }
     }
 
-    if (invalidTokens.length) {
-      await this.prisma.pushToken.deleteMany({
-        where: { token: { in: invalidTokens } },
-      });
+    if (invalidTokens.length > 0) {
+      await this.removeInvalidTokens(invalidTokens);
     }
+  }
+
+  private async removeInvalidTokens(tokens: string[]) {
+    const uniqueTokens = [...new Set(tokens)];
+
+    this.logger.warn(`Removendo ${uniqueTokens.length} tokens inválidos`);
+
+    await this.prisma.pushToken.deleteMany({
+      where: {
+        token: {
+          in: uniqueTokens,
+        },
+      },
+    });
   }
 
   async sendPostNotification(
