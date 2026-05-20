@@ -1,11 +1,6 @@
 import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import {
-  Prisma,
-  PrismaClientKnownRequestError,
-  StoryType,
-  StoryVisibility,
-} from '@prisma/client';
+import { Prisma, StoryType, StoryVisibility } from '@prisma/client';
 
 import { PrismaService } from 'src/databases/prisma/prisma.service';
 import { PushService } from 'src/notification/push.service';
@@ -271,10 +266,7 @@ export class StoriesService implements OnModuleInit {
 
       await this.notifyStoryCreated(story.id);
     } catch (error) {
-      if (
-        error instanceof PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
+      if (error.code === 'P2002') {
         return;
       }
 
