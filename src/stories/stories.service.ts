@@ -28,6 +28,13 @@ type GlobalPostCandidate = {
   score: number;
 };
 
+type RetrospectivePeriod = {
+  start: Date;
+  end: Date;
+};
+
+const STORY_EXPIRATION_DAYS = 14;
+
 @Injectable()
 export class StoriesService implements OnModuleInit {
   constructor(
@@ -48,7 +55,7 @@ export class StoriesService implements OnModuleInit {
   }
 
   private async runStoriesGeneration(referenceDate = new Date()) {
-    await this.generateQuarterlyRetrospectives(referenceDate);
+    await this.generateSemesterlyRetrospectives(referenceDate);
     await this.generateYearlyRetrospectives(referenceDate);
     await this.generateGlobalYearlyRetrospective(referenceDate);
   }
@@ -120,8 +127,8 @@ export class StoriesService implements OnModuleInit {
     return this.mapStory(story);
   }
 
-  private async generateQuarterlyRetrospectives(referenceDate: Date) {
-    const period = this.getPreviousQuarterPeriod(referenceDate);
+  private async generateSemesterlyRetrospectives(referenceDate: Date) {
+    const period = this.getPreviousSemesterPeriod(referenceDate);
 
     if (!this.hasReachedDate(referenceDate, period.end)) {
       return;
@@ -135,6 +142,17 @@ export class StoriesService implements OnModuleInit {
     });
 
     for (const user of users) {
+      const alreadyExists = await this.storyAlreadyExists({
+        type: 'USER_SEMESTERLY_RETROSPECTIVE',
+        userId: user.id,
+        periodStart: period.start,
+        periodEnd: period.end,
+      });
+
+      if (alreadyExists) {
+        continue;
+      }
+
       const mediaCandidates = await this.findUserRetrospectiveMedia(
         user.id,
         period.start,
@@ -145,11 +163,11 @@ export class StoriesService implements OnModuleInit {
         continue;
       }
 
-      await this.createStoryIfNotExists({
-        type: 'USER_QUARTERLY_RETROSPECTIVE',
+      await this.createStory({
+        type: 'USER_SEMESTERLY_RETROSPECTIVE',
         visibility: 'USER_ONLY',
         userId: user.id,
-        title: 'Sua retrospectiva trimestral',
+        title: 'Sua retrospectiva semestral',
         subtitle: this.formatPeriodLabel(period.start, period.end),
         periodStart: period.start,
         periodEnd: period.end,
@@ -173,6 +191,17 @@ export class StoriesService implements OnModuleInit {
     });
 
     for (const user of users) {
+      const alreadyExists = await this.storyAlreadyExists({
+        type: 'USER_YEARLY_RETROSPECTIVE',
+        userId: user.id,
+        periodStart: period.start,
+        periodEnd: period.end,
+      });
+
+      if (alreadyExists) {
+        continue;
+      }
+
       const mediaCandidates = await this.findUserRetrospectiveMedia(
         user.id,
         period.start,
@@ -183,7 +212,7 @@ export class StoriesService implements OnModuleInit {
         continue;
       }
 
-      await this.createStoryIfNotExists({
+      await this.createStory({
         type: 'USER_YEARLY_RETROSPECTIVE',
         visibility: 'USER_ONLY',
         userId: user.id,
@@ -203,6 +232,17 @@ export class StoriesService implements OnModuleInit {
       return;
     }
 
+    const alreadyExists = await this.storyAlreadyExists({
+      type: 'GLOBAL_YEARLY_RETROSPECTIVE',
+      userId: null,
+      periodStart: period.start,
+      periodEnd: period.end,
+    });
+
+    if (alreadyExists) {
+      return;
+    }
+
     const topPosts = await this.findTopGlobalPosts(period.start, period.end);
 
     if (!topPosts.length) {
@@ -215,7 +255,7 @@ export class StoriesService implements OnModuleInit {
       return;
     }
 
-    await this.createStoryIfNotExists({
+    await this.createStory({
       type: 'GLOBAL_YEARLY_RETROSPECTIVE',
       visibility: 'GLOBAL',
       userId: null,
@@ -227,7 +267,26 @@ export class StoriesService implements OnModuleInit {
     });
   }
 
-  private async createStoryIfNotExists(params: {
+  private async storyAlreadyExists(params: {
+    type: StoryType;
+    userId: string | null;
+    periodStart: Date;
+    periodEnd: Date;
+  }) {
+    const existing = await this.prisma.story.findFirst({
+      where: {
+        type: params.type,
+        userId: params.userId,
+        periodStart: params.periodStart,
+        periodEnd: params.periodEnd,
+      },
+      select: { id: true },
+    });
+
+    return Boolean(existing);
+  }
+
+  private async createStory(params: {
     type: StoryType;
     visibility: StoryVisibility;
     userId: string | null;
@@ -253,7 +312,7 @@ export class StoriesService implements OnModuleInit {
           userId: params.userId,
           periodStart: params.periodStart,
           periodEnd: params.periodEnd,
-          expiresAt: this.addDays(new Date(), 14),
+          expiresAt: this.addDays(new Date(), STORY_EXPIRATION_DAYS),
           items: {
             create: uniqueMedia.map((item, index) => ({
               order: index + 1,
@@ -266,6 +325,7 @@ export class StoriesService implements OnModuleInit {
 
       await this.notifyStoryCreated(story.id);
     } catch (error) {
+      // Salvaguarda contra race condition entre `storyAlreadyExists` e `create`.
       if (error.code === 'P2002') {
         return;
       }
@@ -415,23 +475,28 @@ export class StoriesService implements OnModuleInit {
     };
   }
 
-  private getPreviousQuarterPeriod(referenceDate: Date) {
+  private getPreviousSemesterPeriod(referenceDate: Date): RetrospectivePeriod {
     const year = referenceDate.getFullYear();
     const month = referenceDate.getMonth();
 
-    const currentQuarterStartMonth = Math.floor(month / 3) * 3;
+    // Se estamos no segundo semestre (jul–dez), o período anterior é o
+    // primeiro semestre do ano corrente.
+    if (month >= 6) {
+      return {
+        start: new Date(year, 0, 1, 0, 0, 0, 0),
+        end: new Date(year, 6, 1, 0, 0, 0, 0),
+      };
+    }
 
-    const start = new Date(year, currentQuarterStartMonth - 3, 1, 0, 0, 0, 0);
-
-    const end = new Date(year, currentQuarterStartMonth, 1, 0, 0, 0, 0);
-
+    // Se estamos no primeiro semestre (jan–jun), o período anterior é o
+    // segundo semestre do ano anterior.
     return {
-      start,
-      end,
+      start: new Date(year - 1, 6, 1, 0, 0, 0, 0),
+      end: new Date(year, 0, 1, 0, 0, 0, 0),
     };
   }
 
-  private getYearRetrospectivePeriod(year: number) {
+  private getYearRetrospectivePeriod(year: number): RetrospectivePeriod {
     const start = new Date(year, 0, 1, 0, 0, 0, 0);
 
     const end = this.getFirstBusinessDayOfDecember(year);
@@ -458,7 +523,9 @@ export class StoriesService implements OnModuleInit {
     return result;
   }
 
-  private getLatestAvailableYearlyPeriod(referenceDate: Date) {
+  private getLatestAvailableYearlyPeriod(
+    referenceDate: Date,
+  ): RetrospectivePeriod | null {
     const currentYear = referenceDate.getFullYear();
 
     const currentYearGenerationDate =
