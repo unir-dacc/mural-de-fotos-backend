@@ -33,21 +33,22 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  // @Post()
-  // @Public()
-  // @ApiOperation({
-  //   summary: 'Create a new user',
-  //   operationId: 'createUser',
-  // })
-  // @ApiResponse({
-  //   status: 201,
-  //   description: 'User successfully created',
-  //   type: GetUserDto,
-  // })
-  // @ApiResponse({ status: 400, description: 'Invalid request data' })
-  // async create(@Body() createUserDto: CreateUserDto) {
-  //   return this.usersService.createUser(createUserDto);
-  // }
+  @Post()
+  @Public()
+  @ApiOperation({
+    summary: 'Create a new user',
+    operationId: 'createUser',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'User successfully created',
+    type: GetUserDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid request data' })
+  async create(@Body() createUserDto: CreateUserDto) {
+    return {};
+    // this.usersService.createUser(createUserDto);
+  }
 
   @Get(':id')
   @Public()
