@@ -46,7 +46,8 @@ export class UsersController {
   })
   @ApiResponse({ status: 400, description: 'Invalid request data' })
   async create(@Body() createUserDto: CreateUserDto) {
-    return this.usersService.createUser(createUserDto);
+    return {};
+    // this.usersService.createUser(createUserDto);
   }
 
   @Get(':id')
